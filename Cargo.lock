@@ -4255,60 +4255,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
-name = "minimal-template-node"
-version = "0.1.0"
-dependencies = [
- "clap",
- "docify",
- "futures",
- "futures-timer",
- "jsonrpsee",
- "minimal-template-runtime",
- "polkadot-sdk-frame",
- "sc-basic-authorship",
- "sc-cli",
- "sc-client-api",
- "sc-consensus",
- "sc-consensus-manual-seal",
- "sc-executor",
- "sc-network",
- "sc-offchain",
- "sc-rpc-api",
- "sc-service",
- "sc-telemetry",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "serde_json",
- "sp-api",
- "sp-block-builder",
- "sp-blockchain",
- "sp-io",
- "sp-keyring",
- "sp-runtime",
- "sp-timestamp",
- "substrate-build-script-utils",
- "substrate-frame-rpc-system",
-]
-
-[[package]]
-name = "minimal-template-runtime"
-version = "0.1.0"
-dependencies = [
- "pallet-balances",
- "pallet-minimal-template",
- "pallet-sudo",
- "pallet-timestamp",
- "pallet-transaction-payment",
- "pallet-transaction-payment-rpc-runtime-api",
- "parity-scale-codec",
- "polkadot-sdk-frame",
- "scale-info",
- "sp-genesis-builder",
- "sp-runtime",
- "substrate-wasm-builder",
-]
-
-[[package]]
 name = "miniz_oxide"
 version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4918,6 +4864,59 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
+name = "orehub-node"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "docify",
+ "futures",
+ "futures-timer",
+ "jsonrpsee",
+ "orehub-runtime",
+ "polkadot-sdk-frame",
+ "sc-basic-authorship",
+ "sc-cli",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-consensus-manual-seal",
+ "sc-executor",
+ "sc-network",
+ "sc-offchain",
+ "sc-rpc-api",
+ "sc-service",
+ "sc-telemetry",
+ "sc-transaction-pool",
+ "sc-transaction-pool-api",
+ "serde_json",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-io",
+ "sp-keyring",
+ "sp-runtime",
+ "sp-timestamp",
+ "substrate-build-script-utils",
+ "substrate-frame-rpc-system",
+]
+
+[[package]]
+name = "orehub-runtime"
+version = "0.1.0"
+dependencies = [
+ "pallet-balances",
+ "pallet-sudo",
+ "pallet-timestamp",
+ "pallet-transaction-payment",
+ "pallet-transaction-payment-rpc-runtime-api",
+ "parity-scale-codec",
+ "polkadot-sdk-frame",
+ "scale-info",
+ "sp-genesis-builder",
+ "sp-runtime",
+ "substrate-wasm-builder",
+]
+
+[[package]]
 name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4940,7 +4939,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "pallet-minimal-template"
+name = "pallet-orehub"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",

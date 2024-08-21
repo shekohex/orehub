@@ -32,7 +32,7 @@
 //!
 //! ### Pallet
 //!
-//! A minimal [`pallet`](`pallet_minimal_template`) that is built using FRAME. It is a unit of
+//! A minimal [`pallet`](`pallet_orehub`) that is built using FRAME. It is a unit of
 //! encapsulated logic that has a clearly defined responsibility and can be linked to other pallets.
 //!
 //! ## Getting Started
@@ -44,7 +44,7 @@
 //! Build the node using the following command:
 //!
 //! ```bash
-//! cargo build -p minimal-template-node --release
+//! cargo build -p orehub-node --release
 //! ```
 //!
 //! ### Run the Node
@@ -52,7 +52,7 @@
 //! Run the node using the following command:
 //!
 //! ```bash
-//! ./target/release/minimal-template-node --dev
+//! ./target/release/orehub-node --dev
 //! ```
 //!
 //! ### CLI Options
@@ -61,7 +61,7 @@
 //! available options, run the following command:
 //!
 //! ```bash
-//! ./target/release/minimal-template-node --help
+//! ./target/release/orehub-node --help
 //! ```
 //!
 //! #### Consensus Algorithm
@@ -71,5 +71,5 @@
 //! following command:
 //!
 //! ```bash
-//! ./target/release/minimal-template-node --dev --consensus manual-seal-5000
+//! ./target/release/orehub-node --dev --consensus manual-seal-5000
 //! ```

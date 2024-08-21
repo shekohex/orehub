@@ -1,6 +1,6 @@
 [package]
-name = "minimal-template-node"
-description = "A minimal Substrate-based Substrate node, ready for hacking. (polkadot v1.15.0)"
+name = "orehub-node"
+description = "OreHub Node is a decentralized mining pool for the Ore cryptocurrency."
 version = "0.1.0"
 license = "Unlicense"
 authors.workspace = true
@@ -62,8 +62,11 @@ sp-runtime.workspace = true
 sp-runtime.default-features = true
 substrate-frame-rpc-system.workspace = true
 substrate-frame-rpc-system.default-features = true
-frame = { features = ["experimental", "runtime"], workspace = true, default-features = true }
-minimal-template-runtime.workspace = true
+frame = { features = [
+    "experimental",
+    "runtime",
+], workspace = true, default-features = true }
+orehub-runtime.workspace = true
 
 [build-dependencies]
 substrate-build-script-utils.workspace = true
@@ -71,6 +74,6 @@ substrate-build-script-utils.default-features = true
 
 [features]
 default = ["std"]
-std = [
-	"minimal-template-runtime/std",
-]
+std = ["orehub-runtime/std"]
+runtime-benchmarks = ["orehub-runtime/runtime-benchmarks"]
+try-runtime = ["orehub-runtime/try-runtime"]

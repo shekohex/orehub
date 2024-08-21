@@ -15,7 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Substrate Node Template CLI library.
+//! OreHub Node CLI library.
 #![warn(missing_docs)]
 
 mod chain_spec;
@@ -25,5 +25,5 @@ mod rpc;
 mod service;
 
 fn main() -> sc_cli::Result<()> {
-	command::run()
+    command::run()
 }

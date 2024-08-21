@@ -1,25 +1,8 @@
-<div align="center">
+# OreHub Node
 
-# Polkadot SDK's Minimal Template
+OreHub Node is a Polkadot SDK based blockchain node that is designed to be a decentralized Mining Pool for the [Ore](https://ore.supply) cryptocurrency.
 
-<img height="70px" alt="Polkadot SDK Logo" src="https://github.com/paritytech/polkadot-sdk/raw/master/docs/images/Polkadot_Logo_Horizontal_Pink_White.png#gh-dark-mode-only"/>
-<img height="70px" alt="Polkadot SDK Logo" src="https://github.com/paritytech/polkadot-sdk/raw/master/docs/images/Polkadot_Logo_Horizontal_Pink_Black.png#gh-light-mode-only"/>
-
-> This is a minimal template for creating a blockchain based on Polkadot SDK.
->
-> This template is automatically updated after releases in the main [Polkadot SDK monorepo](https://github.com/paritytech/polkadot-sdk).
-
-</div>
-
-* 🤏 This template is a minimal (in terms of complexity and the number of components)
-template for building a blockchain node.
-
-* 🔧 Its runtime is configured with a single custom pallet as a starting point, and a handful of ready-made pallets
-such as a [Balances pallet](https://paritytech.github.io/polkadot-sdk/master/pallet_balances/index.html).
-
-* 👤 The template has no consensus configured - it is best for experimenting with a single node network.
-
-## Template Structure
+## Project Structure
 
 A Polkadot SDK based project such as this one consists of:
 
@@ -29,7 +12,7 @@ A Polkadot SDK based project such as this one consists of:
 
 ## Getting Started
 
-* 🦀 The template is using the Rust language.
+* 🦀 The project is using the Rust language.
 
 * 👉 Check the
 [Rust installation instructions](https://www.rust-lang.org/tools/install) for your system.
@@ -42,13 +25,13 @@ packages required to compile this template - please take note of the Rust compil
 🔨 Use the following command to build the node without launching it:
 
 ```sh
-cargo build --package minimal-template-node --release
+cargo build --package orehub-node --release
 ```
 
 🐳 Alternatively, build the docker image:
 
 ```sh
-docker build . -t polkadot-sdk-minimal-template
+docker build . -t orehub
 ```
 
 ### Single-Node Development Chain
@@ -56,10 +39,10 @@ docker build . -t polkadot-sdk-minimal-template
 👤 The following command starts a single-node development chain:
 
 ```sh
-./target/release/minimal-template-node --dev
+./target/release/orehub-node --dev
 
 # docker version:
-docker run --rm polkadot-sdk-minimal-template --dev
+docker run --rm orehub --dev
 ```
 
 Development chains:
@@ -79,16 +62,6 @@ available on [IPFS](https://dotapps.io/).
 
 * 🧑‍🔧 You can also find the source code and instructions for hosting your own instance in the
 [`polkadot-js/apps`](https://github.com/polkadot-js/apps) repository.
-
-## Contributing
-
-* 🔄 This template is automatically updated after releases in the main [Polkadot SDK monorepo](https://github.com/paritytech/polkadot-sdk).
-
-* ➡️ Any pull requests should be directed to this [source](https://github.com/paritytech/polkadot-sdk/tree/master/templates/minimal).
-
-* 😇 Please refer to the monorepo's
-[contribution guidelines](https://github.com/paritytech/polkadot-sdk/blob/master/docs/contributor/CONTRIBUTING.md) and
-[Code of Conduct](https://github.com/paritytech/polkadot-sdk/blob/master/docs/contributor/CODE_OF_CONDUCT.md).
 
 ## Getting Help
 

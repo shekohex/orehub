@@ -15,7 +15,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use minimal_template_runtime::{BalancesConfig, SudoConfig, WASM_BINARY};
+use orehub_runtime::{consts::currency::ORE, BalancesConfig, SudoConfig, WASM_BINARY};
 use sc_service::{ChainType, Properties};
 use serde_json::{json, Value};
 use sp_keyring::AccountKeyring;
@@ -24,32 +24,38 @@ use sp_keyring::AccountKeyring;
 pub type ChainSpec = sc_service::GenericChainSpec;
 
 fn props() -> Properties {
-	let mut properties = Properties::new();
-	properties.insert("tokenDecimals".to_string(), 0.into());
-	properties.insert("tokenSymbol".to_string(), "MINI".into());
-	properties
+    let mut properties = Properties::new();
+    properties.insert("tokenDecimals".to_string(), 11.into());
+    properties.insert("tokenSymbol".to_string(), "ORE".into());
+    properties.insert(
+        "ss58Format".to_string(),
+        orehub_runtime::consts::SS58_PREFIX.into(),
+    );
+    properties.insert("isEthereum".to_string(), false.into());
+    properties
 }
 
 pub fn development_config() -> Result<ChainSpec, String> {
-	Ok(ChainSpec::builder(WASM_BINARY.expect("Development wasm not available"), Default::default())
-		.with_name("Development")
-		.with_id("dev")
-		.with_chain_type(ChainType::Development)
-		.with_genesis_config_patch(testnet_genesis())
-		.with_properties(props())
-		.build())
+    Ok(ChainSpec::builder(
+        WASM_BINARY.expect("Development wasm not available"),
+        Default::default(),
+    )
+    .with_name("OreHub Development")
+    .with_id("dev")
+    .with_chain_type(ChainType::Development)
+    .with_genesis_config_patch(testnet_genesis())
+    .with_properties(props())
+    .build())
 }
 
 /// Configure initial storage state for FRAME pallets.
 fn testnet_genesis() -> Value {
-	use frame::traits::Get;
-	use minimal_template_runtime::interface::{Balance, MinimumBalance};
-	let endowment = <MinimumBalance as Get<Balance>>::get().max(1) * 1000;
-	let balances = AccountKeyring::iter()
-		.map(|a| (a.to_account_id(), endowment))
-		.collect::<Vec<_>>();
-	json!({
-		"balances": BalancesConfig { balances },
-		"sudo": SudoConfig { key: Some(AccountKeyring::Alice.to_account_id()) },
-	})
+    let endowment = 1000 * ORE;
+    let balances = AccountKeyring::iter()
+        .map(|a| (a.to_account_id(), endowment))
+        .collect::<Vec<_>>();
+    json!({
+        "balances": BalancesConfig { balances },
+        "sudo": SudoConfig { key: Some(AccountKeyring::Alice.to_account_id()) },
+    })
 }
