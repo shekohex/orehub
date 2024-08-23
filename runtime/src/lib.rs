@@ -30,7 +30,7 @@ use frame::{
     deps::frame_support::{
         genesis_builder_helper::{build_state, get_preset},
         runtime,
-        weights::{FixedFee, NoFee},
+        weights::{ConstantMultiplier, IdentityFee},
     },
     prelude::*,
     runtime::{
@@ -85,8 +85,14 @@ type SignedExtra = (
     frame_system::CheckWeight<Runtime>,
     // Ensures that the sender has enough funds to pay for the transaction
     // and deducts the fee from the sender's account.
-    pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    // if the transaction is feeless, it skips the check.
+    pallet_skip_feeless_payment::SkipCheckIfFeeless<
+        Runtime,
+        pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
+    >,
 );
+
+impl pallet_orehub::Config for Runtime {}
 
 // Composes the runtime by adding all the used pallets and deriving necessary types.
 #[runtime]
@@ -125,6 +131,14 @@ mod runtime {
     /// Provides the ability to charge for extrinsic execution.
     #[runtime::pallet_index(4)]
     pub type TransactionPayment = pallet_transaction_payment::Pallet<Runtime>;
+
+    /// Provides the ability to mark transactions as feeless.
+    #[runtime::pallet_index(5)]
+    pub type Feeless = pallet_skip_feeless_payment::Pallet<Runtime>;
+
+    /// A Playground pallet for testing.
+    #[runtime::pallet_index(6)]
+    pub type OreHub = pallet_orehub::Pallet<Runtime>;
 }
 
 parameter_types! {
@@ -157,10 +171,10 @@ impl pallet_balances::Config for Runtime {
 impl pallet_sudo::Config for Runtime {}
 
 parameter_types! {
-    /// The block time is 60 seconds.
+    /// The block time is 1 seconds.
     ///
     /// We divide it by 2 since mostly the UI shows 2x the block time.
-    pub const BlockTime: u64 = 60_000 / 2;
+    pub const BlockTime: u64 = 1_000 / 2;
 }
 
 // Implements the types required for the sudo pallet.
@@ -172,16 +186,28 @@ impl pallet_timestamp::Config for Runtime {
     type WeightInfo = pallet_timestamp::weights::SubstrateWeight<Self>;
 }
 
-// Implements the types required for the transaction payment pallet.
-#[derive_impl(pallet_transaction_payment::config_preludes::TestDefaultConfig)]
-impl pallet_transaction_payment::Config for Runtime {
-    type OnChargeTransaction = pallet_transaction_payment::FungibleAdapter<Balances, ()>;
-    // Setting fee as independent of the weight of the extrinsic for demo purposes
-    type WeightToFee = NoFee<<Self as pallet_balances::Config>::Balance>;
-    // Setting fee as fixed for any length of the call data for demo purposes
-    type LengthToFee = FixedFee<1, <Self as pallet_balances::Config>::Balance>;
+parameter_types! {
+    pub const TransactionByteFee: Balance = consts::currency::NANORE;
+    pub const OperationalFeeMultiplier: u8 = 5;
 }
 
+// Implements the types required for the transaction payment pallet.
+impl pallet_transaction_payment::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    // TODO: deal with unbalanced fees
+    type OnChargeTransaction = pallet_transaction_payment::FungibleAdapter<Balances, ()>;
+    type OperationalFeeMultiplier = OperationalFeeMultiplier;
+    type WeightToFee = IdentityFee<Balance>;
+    type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
+    type FeeMultiplierUpdate = ();
+}
+
+// To Support Feeless Transactions (Conditionally)
+impl pallet_skip_feeless_payment::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+}
+
+type Balance = <Runtime as pallet_balances::Config>::Balance;
 type Block = frame::runtime::types_common::BlockOf<Runtime, SignedExtra>;
 type Header = HeaderFor<Runtime>;
 

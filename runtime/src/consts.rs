@@ -11,6 +11,7 @@ pub mod currency {
     pub const ORE: Balance = 100_000_000_000;
     pub const MILLIORE: Balance = ORE / 1000;
     pub const MICRORE: Balance = MILLIORE / 1000;
+    pub const NANORE: Balance = MICRORE / 1000;
 
     // Monetary value
     // =============

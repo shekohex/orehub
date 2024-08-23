@@ -4904,6 +4904,8 @@ name = "orehub-runtime"
 version = "0.1.0"
 dependencies = [
  "pallet-balances",
+ "pallet-orehub",
+ "pallet-skip-feeless-payment",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -4945,6 +4947,19 @@ dependencies = [
  "parity-scale-codec",
  "polkadot-sdk-frame",
  "scale-info",
+]
+
+[[package]]
+name = "pallet-skip-feeless-payment"
+version = "12.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14e2dd819298983723fe0c991626b86c77b224ed5bfce1cee78af76ed256143f"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
 ]
 
 [[package]]

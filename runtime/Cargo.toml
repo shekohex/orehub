@@ -18,8 +18,12 @@ pallet-sudo.workspace = true
 pallet-timestamp.workspace = true
 pallet-transaction-payment.workspace = true
 pallet-transaction-payment-rpc-runtime-api.workspace = true
+pallet-skip-feeless-payment.workspace = true
 sp-genesis-builder.workspace = true
 sp-runtime = { features = ["serde"], workspace = true }
+
+# OreHub specific pallets
+pallet-orehub = { workspace = true, default-features = false }
 
 [build-dependencies]
 substrate-wasm-builder = { optional = true, workspace = true, default-features = true }
@@ -37,16 +41,20 @@ std = [
     "pallet-timestamp/std",
     "pallet-transaction-payment-rpc-runtime-api/std",
     "pallet-transaction-payment/std",
+    "pallet-skip-feeless-payment/std",
 
     "sp-genesis-builder/std",
     "sp-runtime/std",
     "substrate-wasm-builder",
+
+    "pallet-orehub/std",
 ]
 runtime-benchmarks = [
     "frame/runtime-benchmarks",
     "pallet-balances/runtime-benchmarks",
     "pallet-sudo/runtime-benchmarks",
     "pallet-timestamp/runtime-benchmarks",
+    "pallet-skip-feeless-payment/runtime-benchmarks",
 ]
 try-runtime = [
     "frame/try-runtime",
@@ -54,4 +62,5 @@ try-runtime = [
     "pallet-sudo/try-runtime",
     "pallet-timestamp/try-runtime",
     "pallet-transaction-payment/try-runtime",
+    "pallet-skip-feeless-payment/try-runtime",
 ]
