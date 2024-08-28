@@ -13,12 +13,15 @@ publish = false
 codec = { workspace = true }
 scale-info = { workspace = true }
 frame = { features = ["experimental", "runtime"], workspace = true }
+frame-metadata-hash-extension.workspace = true
+pallet-aura.workspace = true
 pallet-balances.workspace = true
+pallet-grandpa.workspace = true
 pallet-sudo.workspace = true
 pallet-timestamp.workspace = true
+pallet-authorship.workspace = true
 pallet-transaction-payment.workspace = true
 pallet-transaction-payment-rpc-runtime-api.workspace = true
-pallet-skip-feeless-payment.workspace = true
 sp-genesis-builder.workspace = true
 sp-runtime = { features = ["serde"], workspace = true }
 
@@ -35,13 +38,16 @@ std = [
     "scale-info/std",
 
     "frame/std",
+    "frame-metadata-hash-extension/std",
 
+    "pallet-aura/std",
     "pallet-balances/std",
+    "pallet-grandpa/std",
     "pallet-sudo/std",
     "pallet-timestamp/std",
+    "pallet-authorship/std",
     "pallet-transaction-payment-rpc-runtime-api/std",
     "pallet-transaction-payment/std",
-    "pallet-skip-feeless-payment/std",
 
     "sp-genesis-builder/std",
     "sp-runtime/std",
@@ -54,7 +60,6 @@ runtime-benchmarks = [
     "pallet-balances/runtime-benchmarks",
     "pallet-sudo/runtime-benchmarks",
     "pallet-timestamp/runtime-benchmarks",
-    "pallet-skip-feeless-payment/runtime-benchmarks",
 ]
 try-runtime = [
     "frame/try-runtime",
@@ -62,5 +67,6 @@ try-runtime = [
     "pallet-sudo/try-runtime",
     "pallet-timestamp/try-runtime",
     "pallet-transaction-payment/try-runtime",
-    "pallet-skip-feeless-payment/try-runtime",
+    "pallet-authorship/try-runtime",
 ]
+metadata-hash = ["substrate-wasm-builder/metadata-hash"]

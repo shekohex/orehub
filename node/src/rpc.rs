@@ -23,7 +23,7 @@
 #![warn(missing_docs)]
 
 use jsonrpsee::RpcModule;
-use orehub_runtime::interface::{AccountId, Nonce, OpaqueBlock};
+use orehub_runtime::interface::{AccountId, Balance, Nonce, OpaqueBlock};
 use sc_transaction_pool_api::TransactionPool;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use std::sync::Arc;
@@ -55,8 +55,10 @@ where
         + 'static,
     C::Api: sp_block_builder::BlockBuilder<OpaqueBlock>,
     C::Api: substrate_frame_rpc_system::AccountNonceApi<OpaqueBlock, AccountId, Nonce>,
+    C::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<OpaqueBlock, Balance>,
     P: TransactionPool + 'static,
 {
+    use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
     use substrate_frame_rpc_system::{System, SystemApiServer};
     let mut module = RpcModule::new(());
     let FullDeps {
@@ -66,6 +68,14 @@ where
     } = deps;
 
     module.merge(System::new(client.clone(), pool.clone(), deny_unsafe).into_rpc())?;
+    module.merge(TransactionPayment::new(client).into_rpc())?;
+
+    // You probably want to enable the `rpc v2 chainSpec` API as well
+    //
+    // let chain_name = chain_spec.name().to_string();
+    // let genesis_hash = client.block_hash(0).ok().flatten().expect("Genesis block exists; qed");
+    // let properties = chain_spec.properties();
+    // module.merge(ChainSpec::new(chain_name, genesis_hash, properties).into_rpc())?;
 
     Ok(module)
 }

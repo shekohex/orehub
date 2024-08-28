@@ -1,28 +1,13 @@
-// This file is part of Substrate.
-
-// Copyright (C) Parity Technologies (UK) Ltd.
-// SPDX-License-Identifier: Apache-2.0
-
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// 	http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 use sc_cli::RunCmd;
 
+#[cfg(feature = "manual-seal")]
 #[derive(Debug, Clone)]
 pub enum Consensus {
     ManualSeal(u64),
     InstantSeal,
 }
 
+#[cfg(feature = "manual-seal")]
 impl std::str::FromStr for Consensus {
     type Err = String;
 
@@ -42,6 +27,7 @@ pub struct Cli {
     #[command(subcommand)]
     pub subcommand: Option<Subcommand>,
 
+    #[cfg(feature = "manual-seal")]
     #[clap(long, default_value = "manual-seal-3000")]
     pub consensus: Consensus,
 
@@ -50,6 +36,7 @@ pub struct Cli {
 }
 
 #[derive(Debug, clap::Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum Subcommand {
     /// Key management cli utilities
     #[command(subcommand)]
@@ -78,4 +65,7 @@ pub enum Subcommand {
 
     /// Db meta columns information.
     ChainInfo(sc_cli::ChainInfoCmd),
+    /// Sub-commands concerned with benchmarking.
+    #[command(subcommand)]
+    Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }

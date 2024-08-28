@@ -29,6 +29,7 @@
             pkgs.pkg-config
             pkgs.clang
             pkgs.libclang.lib
+            pkgs.rustPlatform.bindgenHook
             pkgs.openssl.dev
             pkgs.gmp
             # Protocol Buffers
@@ -47,6 +48,7 @@
             # Finally the toolchain
             toolchain
             pkgs.taplo
+            pkgs.nodePackages.vscode-langservers-extracted
           ];
           packages = [
             pkgs.cargo-nextest
@@ -55,7 +57,7 @@
           ];
           # Environment variables
           RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
-          LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.gmp pkgs.libclang pkgs.openssl.dev ];
+          LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.gmp pkgs.libclang pkgs.openssl.dev pkgs.stdenv.cc.cc ];
         };
       });
 }

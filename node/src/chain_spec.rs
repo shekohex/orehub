@@ -1,27 +1,24 @@
-// This file is part of Substrate.
-
-// Copyright (C) Parity Technologies (UK) Ltd.
-// SPDX-License-Identifier: Apache-2.0
-
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// 	http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-use orehub_runtime::{consts::currency::ORE, BalancesConfig, SudoConfig, WASM_BINARY};
+use frame::deps::sp_core::{Pair, Public};
+use orehub_runtime::{consts::currency::ORE, interface::AccountId, WASM_BINARY};
 use sc_service::{ChainType, Properties};
-use serde_json::{json, Value};
-use sp_keyring::AccountKeyring;
+use sp_consensus_aura::ed25519::AuthorityId as AuraId;
+use sp_consensus_grandpa::AuthorityId as GrandpaId;
+use sp_keyring::ed25519::Keyring as AccountKeyring;
 
 /// This is a specialization of the general Substrate ChainSpec type.
 pub type ChainSpec = sc_service::GenericChainSpec;
+
+/// Generate a crypto pair from seed.
+pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
+    TPublic::Pair::from_string(&format!("//{}", seed), None)
+        .expect("static values are valid; qed")
+        .public()
+}
+
+/// Generate an Aura authority key.
+pub fn authority_keys_from_seed(s: &str) -> (AuraId, GrandpaId) {
+    (get_from_seed::<AuraId>(s), get_from_seed::<GrandpaId>(s))
+}
 
 fn props() -> Properties {
     let mut properties = Properties::new();
@@ -43,19 +40,80 @@ pub fn development_config() -> Result<ChainSpec, String> {
     .with_name("OreHub Development")
     .with_id("dev")
     .with_chain_type(ChainType::Development)
-    .with_genesis_config_patch(testnet_genesis())
+    .with_genesis_config_patch(testnet_genesis(
+        // Initial PoA authorities
+        vec![
+            authority_keys_from_seed("Alice"),
+            // authority_keys_from_seed("Bob"),
+            // authority_keys_from_seed("Charlie"),
+            // authority_keys_from_seed("Dave"),
+            // authority_keys_from_seed("Eve"),
+        ],
+        // Sudo account
+        AccountKeyring::Alice.to_account_id(),
+        // Pre-funded accounts
+        vec![
+            AccountKeyring::Alice.to_account_id(),
+            AccountKeyring::Bob.to_account_id(),
+            AccountKeyring::Charlie.to_account_id(),
+            AccountKeyring::Dave.to_account_id(),
+            AccountKeyring::Eve.to_account_id(),
+        ],
+    ))
     .with_properties(props())
     .build())
 }
 
-/// Configure initial storage state for FRAME pallets.
-fn testnet_genesis() -> Value {
+pub fn local_testnet_config() -> Result<ChainSpec, String> {
+    Ok(ChainSpec::builder(
+        WASM_BINARY.expect("Development wasm not available"),
+        Default::default(),
+    )
+    .with_name("OreHub Local Testnet")
+    .with_id("local_testnet")
+    .with_chain_type(ChainType::Local)
+    .with_genesis_config_patch(testnet_genesis(
+        // Initial PoA authorities
+        vec![
+            authority_keys_from_seed("Alice"),
+            authority_keys_from_seed("Bob"),
+            authority_keys_from_seed("Charlie"),
+        ],
+        // Sudo account
+        AccountKeyring::Alice.to_account_id(),
+        // Pre-funded accounts
+        vec![
+            AccountKeyring::Alice.to_account_id(),
+            AccountKeyring::Bob.to_account_id(),
+            AccountKeyring::Charlie.to_account_id(),
+            AccountKeyring::Dave.to_account_id(),
+            AccountKeyring::Eve.to_account_id(),
+        ],
+    ))
+    .with_properties(props())
+    .build())
+}
+
+/// Configure initial storage state for FRAME modules.
+fn testnet_genesis(
+    initial_authorities: Vec<(AuraId, GrandpaId)>,
+    root_key: AccountId,
+    endowed_accounts: Vec<AccountId>,
+) -> serde_json::Value {
     let endowment = 1000 * ORE;
-    let balances = AccountKeyring::iter()
-        .map(|a| (a.to_account_id(), endowment))
-        .collect::<Vec<_>>();
-    json!({
-        "balances": BalancesConfig { balances },
-        "sudo": SudoConfig { key: Some(AccountKeyring::Alice.to_account_id()) },
+    serde_json::json!({
+        "balances": {
+            "balances": endowed_accounts.iter().cloned().map(|k| (k, endowment)).collect::<Vec<_>>(),
+        },
+        "aura": {
+            "authorities": initial_authorities.iter().map(|x| (x.0.clone())).collect::<Vec<_>>(),
+        },
+        "grandpa": {
+            "authorities": initial_authorities.iter().map(|x| (x.1.clone(), 1)).collect::<Vec<_>>(),
+        },
+        "sudo": {
+            // Assign network admin rights.
+            "key": Some(root_key),
+        },
     })
 }

@@ -12,6 +12,8 @@ pub use pallet::*;
 
 #[frame::pallet]
 pub mod pallet {
+    use frame::deps::frame_support::dispatch::PostDispatchInfo;
+
     use super::*;
 
     #[pallet::config]
@@ -23,13 +25,14 @@ pub mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         #[pallet::weight(10_000)]
-        #[pallet::feeless_if(|_: &OriginFor<T>, number: &u32| -> bool {
-            Pallet::<T>::is_odd(*number)
-        })]
-        pub fn check_is_odd(origin: OriginFor<T>, number: u32) -> DispatchResult {
+        pub fn check_is_odd(origin: OriginFor<T>, number: u32) -> DispatchResultWithPostInfo {
             let _who = ensure_signed(origin)?;
-            ensure!(Self::is_odd(number), "Number is not odd.");
-            Ok(())
+            let valid = Self::is_odd(number);
+
+            Ok(PostDispatchInfo {
+                actual_weight: None,
+                pays_fee: if valid { Pays::No } else { Pays::Yes },
+            })
         }
     }
 
