@@ -443,7 +443,7 @@ where
 }
 
 parameter_types! {
-    pub const TransactionByteFee: Balance = currency::MICRORE;
+    pub const TransactionByteFee: Balance = currency::MILLICENT;
     pub const OperationalFeeMultiplier: u8 = 5;
     pub const TargetBlockFullness: Perquintill = Perquintill::from_percent(85);
     pub AdjustmentVariable: Multiplier = Multiplier::saturating_from_rational(1, 100_000);

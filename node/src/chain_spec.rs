@@ -7,8 +7,10 @@ use pallet_im_online::ed25519::AuthorityId as ImOnlineId;
 use sc_service::{ChainType, Properties};
 use sp_consensus_babe::AuthorityId as BabeId;
 use sp_consensus_grandpa::AuthorityId as GrandpaId;
-use sp_keyring::ed25519::ed25519::Public as Ed25519Public;
-use sp_keyring::ed25519::Keyring as AccountKeyring;
+// Used only during the development phase
+// in production, we will use Ed25519 keys
+use sp_keyring::sr25519::sr25519::Public as AccountPublic;
+use sp_keyring::sr25519::Keyring as AccountKeyring;
 
 /// This is a specialization of the general Substrate ChainSpec type.
 pub type ChainSpec = sc_service::GenericChainSpec;
@@ -30,7 +32,7 @@ pub struct SessionKeys {
 /// Generate an Aura authority key.
 pub fn authority_keys_from_seed(s: &str) -> SessionKeys {
     SessionKeys {
-        account: get_from_seed::<Ed25519Public>(s).into(),
+        account: get_from_seed::<AccountPublic>(s).0.into(),
         babe: get_from_seed::<BabeId>(s),
         grandpa: get_from_seed::<GrandpaId>(s),
         im_online: get_from_seed::<ImOnlineId>(s),

@@ -57,8 +57,17 @@ pub type Service = sc_service::PartialComponents<
     sc_consensus::DefaultImportQueue<Block>,
     sc_transaction_pool::FullPool<Block, FullClient>,
     (
-        sc_consensus_grandpa::GrandpaBlockImport<FullBackend, Block, FullClient, FullSelectChain>,
         sc_consensus_grandpa::LinkHalf<Block, FullClient, FullSelectChain>,
+        sc_consensus_babe::BabeBlockImport<
+            Block,
+            FullClient,
+            sc_consensus_grandpa::GrandpaBlockImport<
+                FullBackend,
+                Block,
+                FullClient,
+                FullSelectChain,
+            >,
+        >,
         sc_consensus_babe::BabeWorkerHandle<Block>,
         sc_consensus_babe::BabeLink<Block>,
         Option<Telemetry>,
@@ -130,7 +139,7 @@ pub fn new_partial(config: &Configuration) -> Result<Service, ServiceError> {
     );
 
     #[cfg(not(feature = "manual-seal"))]
-    let (block_import, babe_link) = sc_consensus_babe::block_import(
+    let (babe_block_import, babe_link) = sc_consensus_babe::block_import(
         sc_consensus_babe::configuration(&*client)?,
         grandpa_block_import.clone(),
         client.clone(),
@@ -142,7 +151,7 @@ pub fn new_partial(config: &Configuration) -> Result<Service, ServiceError> {
     let (import_queue, babe_worker_handle) = sc_consensus_babe::import_queue(
         sc_consensus_babe::ImportQueueParams {
             link: babe_link.clone(),
-            block_import: block_import.clone(),
+            block_import: babe_block_import.clone(),
             justification_import: Some(Box::new(grandpa_block_import.clone())),
             client: client.clone(),
             select_chain: select_chain.clone(),
@@ -168,9 +177,9 @@ pub fn new_partial(config: &Configuration) -> Result<Service, ServiceError> {
         transaction_pool,
         other: (
             #[cfg(not(feature = "manual-seal"))]
-            grandpa_block_import,
-            #[cfg(not(feature = "manual-seal"))]
             grandpa_link,
+            #[cfg(not(feature = "manual-seal"))]
+            babe_block_import,
             #[cfg(not(feature = "manual-seal"))]
             babe_worker_handle,
             #[cfg(not(feature = "manual-seal"))]
@@ -197,7 +206,7 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
     } = new_partial(&config)?;
 
     #[cfg(not(feature = "manual-seal"))]
-    let (block_import, grandpa_link, babe_worker, babe_link, mut telemetry) = other_stuff;
+    let (grandpa_link, babe_block_import, babe_worker, babe_link, mut telemetry) = other_stuff;
     #[cfg(feature = "manual-seal")]
     let (mut telemetry,) = other_stuff;
 
@@ -437,7 +446,7 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
             client: client.clone(),
             select_chain,
             env: proposer_factory,
-            block_import,
+            block_import: babe_block_import,
             sync_oracle: sync_service.clone(),
             justification_sync_link: sync_service.clone(),
             create_inherent_data_providers: move |parent, ()| {

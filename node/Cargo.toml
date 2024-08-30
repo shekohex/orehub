@@ -126,6 +126,7 @@ try-runtime = [
     "pallet-transaction-payment/try-runtime",
     "orehub-runtime/try-runtime",
 ]
+fast-runtime = ["orehub-runtime/fast-runtime"]
 metadata-hash = ["orehub-runtime/metadata-hash"]
 manual-seal = ["sc-consensus-manual-seal"]
 testnet = ["orehub-runtime/testnet"]
