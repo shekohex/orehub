@@ -142,6 +142,7 @@ pub fn run() -> sc_cli::Result<()> {
             let runner = cli.create_runner(cmd)?;
             runner.sync_run(|config| cmd.run::<orehub_runtime::interface::OpaqueBlock>(&config))
         }
+        Some(Subcommand::GenerateBags(cmd)) => Ok(cmd.run()?),
         Some(Subcommand::Benchmark(cmd)) => {
             let runner = cli.create_runner(cmd)?;
 

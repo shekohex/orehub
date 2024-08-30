@@ -7,17 +7,28 @@ edition = "2021"
 publish = false
 
 [workspace]
-members = ["node", "pallets/template", "runtime"]
+members = ["node", "pallets/template", "primitives", "runtime"]
 resolver = "2"
 
 [workspace.metadata.poladkdot-sdk]
 version = "1.15.0"
 
 [workspace.dependencies]
+orehub-primitives = { path = "./primitives", default-features = false }
 orehub-runtime = { path = "./runtime", default-features = false }
 pallet-orehub = { path = "./pallets/template", default-features = false }
+
+serde = { version = "1.0", default-features = false }
+static_assertions = { version = "1.1.0", default-features = false }
+futures = { version = "0.3.30" }
+futures-timer = { version = "3.0.2" }
+jsonrpsee = { version = "0.23.2" }
 clap = { version = "4.5.3" }
+chrono = { version = "0.4.38" }
+num-format = { version = "0.4.4" }
 docify = { version = "0.2.8" }
+smallvec = { version = "1.13.2", default-features = false }
+
 frame = { version = "0.6.0", default-features = false, package = "polkadot-sdk-frame" }
 frame-benchmarking = { version = "37.0.0", default-features = false }
 frame-benchmarking-cli = { version = "42.0.0", default-features = false }
@@ -26,16 +37,18 @@ frame-system-benchmarking = { version = "37.0.0", default-features = false }
 frame-system-rpc-runtime-api = { version = "34.0.0", default-features = false }
 frame-try-runtime = { version = "0.43.0", default-features = false }
 frame-metadata-hash-extension = { version = "0.5.0", default-features = false }
-futures = { version = "0.3.30" }
-futures-timer = { version = "3.0.2" }
-jsonrpsee = { version = "0.23.2" }
+frame-election-provider-support = { version = "37.0.0", default-features = false }
 sc-basic-authorship = { version = "0.44.0", default-features = false }
 sc-cli = { version = "0.46.0", default-features = false }
+sc-rpc = { version = "39.0.0", default-features = false }
 sc-client-api = { version = "37.0.0", default-features = false }
 sc-consensus = { version = "0.43.0", default-features = false }
 sc-consensus-manual-seal = { version = "0.45.0", default-features = false }
-sc-consensus-aura = { version = "0.44.0", default-features = false }
+sc-consensus-babe = { version = "0.44.0", default-features = false }
+sc-consensus-babe-rpc = { version = "0.44.0", default-features = false }
 sc-consensus-grandpa = { version = "0.29.0", default-features = false }
+sc-consensus-grandpa-rpc = { version = "0.29.0", default-features = false }
+sc-consensus-slots = { version = "0.43.0", default-features = false }
 sc-executor = { version = "0.40.0", default-features = false }
 sc-network = { version = "0.44.0", default-features = false }
 sc-offchain = { version = "39.0.0", default-features = false }
@@ -48,31 +61,56 @@ serde_json = { version = "1.0.114", default-features = false }
 sp-api = { version = "34.0.0", default-features = false }
 sp-block-builder = { version = "34.0.0", default-features = false }
 sp-blockchain = { version = "37.0.0", default-features = false }
+sp-consensus = { version = "0.40.0", default-features = false }
 sp-consensus-aura = { version = "0.40.0", default-features = false }
+sp-consensus-babe = { version = "0.40.0", default-features = false }
 sp-consensus-grandpa = { version = "21.0.0", default-features = false }
 sp-core = { version = "34.0.0", default-features = false }
 sp-inherents = { version = "34.0.0", default-features = false }
 sp-io = { version = "38.0.0", default-features = false }
 sp-keyring = { version = "39.0.0", default-features = false }
+sp-keystore = { version = "0.40.0", default-features = false }
 sp-runtime = { version = "39.0.0", default-features = false }
+sp-staking = { version = "34.0.0", default-features = false }
 sp-timestamp = { version = "34.0.0", default-features = false }
 substrate-frame-rpc-system = { version = "38.0.0", default-features = false }
 substrate-build-script-utils = { version = "11.0.0", default-features = false }
 codec = { version = "3.6.12", default-features = false, package = "parity-scale-codec" }
-pallet-aura = { version = "36.0.0", default-features = false }
-pallet-balances = { version = "38.0.0", default-features = false }
-pallet-grandpa = { version = "37.0.0", default-features = false }
-pallet-sudo = { version = "37.0.0", default-features = false }
-pallet-timestamp = { version = "36.0.0", default-features = false }
 pallet-authorship = { version = "37.0.0", default-features = false }
+pallet-aura = { version = "36.0.0", default-features = false }
+pallet-babe = { version = "37.0.0", default-features = false }
+pallet-bags-list = { version = "36.0.0", default-features = false }
+pallet-balances = { version = "38.0.0", default-features = false }
+pallet-bounties = { version = "36.0.0", default-features = false }
+pallet-child-bounties = { version = "36.0.0", default-features = false }
+pallet-collective = { version = "37.0.0", default-features = false }
+pallet-democracy = { version = "37.0.0", default-features = false }
+pallet-election-provider-multi-phase = { version = "36.0.0", default-features = false }
+pallet-elections-phragmen = { version = "38.0.0", default-features = false }
+pallet-grandpa = { version = "37.0.0", default-features = false }
+pallet-identity = { version = "37.0.0", default-features = false }
+pallet-im-online = { version = "36.0.0", default-features = false }
+pallet-indices = { version = "37.0.0", default-features = false }
+pallet-multisig = { version = "37.0.0", default-features = false }
+pallet-offences = { version = "36.0.0", default-features = false }
+pallet-preimage = { version = "37.0.0", default-features = false }
+pallet-sudo = { version = "37.0.0", default-features = false }
+pallet-scheduler = { version = "38.0.0", default-features = false }
+pallet-staking = { version = "37.0.0", default-features = false }
+pallet-session = { version = "37.0.0", default-features = false }
+pallet-timestamp = { version = "36.0.0", default-features = false }
+pallet-treasury = { version = "36.0.0", default-features = false }
 pallet-transaction-payment = { version = "37.0.0", default-features = false }
 pallet-transaction-payment-rpc = { version = "40.0.0", default-features = false }
 pallet-transaction-payment-rpc-runtime-api = { version = "37.0.0", default-features = false }
+pallet-tx-pause = { version = "18.0.0", default-features = false }
+pallet-utility = { version = "37.0.0", default-features = false }
 scale-info = { version = "2.11.1", default-features = false }
 sp-genesis-builder = { version = "0.15.0", default-features = false }
 sp-offchain = { version = "34.0.0", default-features = false }
 sp-session = { version = "35.0.0", default-features = false }
 sp-storage = { version = "21.0.0", default-features = false }
 sp-transaction-pool = { version = "34.0.0", default-features = false }
+sp-transaction-storage-proof = { version = "34.0.0", default-features = false }
 sp-version = { version = "37.0.0", default-features = false }
 substrate-wasm-builder = { version = "24.0.0", default-features = false }

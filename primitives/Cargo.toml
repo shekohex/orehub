@@ -1,0 +1,23 @@
+[package]
+name = "orehub-primitives"
+description = "OreHub Primitives contains traits and types that are shared in Orehub"
+version = "0.1.0"
+license = "Unlicense"
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+codec.workspace = true
+scale-info.workspace = true
+smallvec.workspace = true
+frame = { features = ["experimental", "runtime"], workspace = true }
+sp-staking.workspace = true
+sp-consensus-babe.workspace = true
+
+[features]
+default = ["std"]
+std = ["codec/std", "scale-info/std", "frame/std", "sp-staking/std", "sp-consensus-babe/std"]
+fast-runtime = []

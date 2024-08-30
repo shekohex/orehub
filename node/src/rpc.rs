@@ -1,74 +1,129 @@
-// This file is part of Substrate.
-
-// Copyright (C) Parity Technologies (UK) Ltd.
-// SPDX-License-Identifier: Apache-2.0
-
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// 	http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-//! A collection of node-specific RPC methods.
-//! Substrate provides the `sc-rpc` crate, which defines the core RPC layer
-//! used by Substrate nodes. This file extends those RPC definitions with
-//! capabilities that are specific to this project's runtime configuration.
-
 #![warn(missing_docs)]
+//! RPC interface for the runtime.
 
+use frame::runtime::types_common::BlockNumber;
 use jsonrpsee::RpcModule;
-use orehub_runtime::interface::{AccountId, Balance, Nonce, OpaqueBlock};
+use orehub_runtime::interface::{AccountId, Balance, Hash, Nonce, OpaqueBlock as Block};
+use sc_client_api::Backend;
+use sc_rpc::SubscriptionTaskExecutor;
 use sc_transaction_pool_api::TransactionPool;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
+use sp_consensus::SelectChain;
+use sp_keystore::KeystorePtr;
 use std::sync::Arc;
 
 pub use sc_rpc_api::DenyUnsafe;
 
+/// Extra dependencies for BABE.
+pub struct BabeDeps {
+    /// A handle to the BABE worker for issuing requests.
+    pub babe_worker_handle: sc_consensus_babe::BabeWorkerHandle<Block>,
+    /// The keystore that manages the keys of the node.
+    pub keystore: KeystorePtr,
+}
+
+/// Extra dependencies for GRANDPA
+pub struct GrandpaDeps<BE> {
+    /// Voting round info.
+    pub shared_voter_state: sc_consensus_grandpa::SharedVoterState,
+    /// Authority set info.
+    pub shared_authority_set: sc_consensus_grandpa::SharedAuthoritySet<Hash, BlockNumber>,
+    /// Receives notifications about justification events from Grandpa.
+    pub justification_stream: sc_consensus_grandpa::GrandpaJustificationStream<Block>,
+    /// Executor to drive the subscription manager in the Grandpa RPC handler.
+    pub subscription_executor: SubscriptionTaskExecutor,
+    /// Finality proof provider.
+    pub finality_provider: Arc<sc_consensus_grandpa::FinalityProofProvider<BE, Block>>,
+}
+
 /// Full client dependencies.
-pub struct FullDeps<C, P> {
+pub struct FullDeps<C, P, BE, SC> {
     /// The client instance to use.
     pub client: Arc<C>,
     /// Transaction pool instance.
     pub pool: Arc<P>,
     /// Whether to deny unsafe calls
     pub deny_unsafe: DenyUnsafe,
+    /// BABE specific dependencies.
+    pub babe: BabeDeps,
+    /// The SelectChain Strategy
+    pub select_chain: SC,
+    /// GRANDPA specific dependencies.
+    pub grandpa: GrandpaDeps<BE>,
 }
 
 #[docify::export]
 /// Instantiate all full RPC extensions.
-pub fn create_full<C, P>(
-    deps: FullDeps<C, P>,
+pub fn create_full<C, P, BE, SC>(
+    deps: FullDeps<C, P, BE, SC>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     C: Send
         + Sync
         + 'static
-        + sp_api::ProvideRuntimeApi<OpaqueBlock>
-        + HeaderBackend<OpaqueBlock>
-        + HeaderMetadata<OpaqueBlock, Error = BlockChainError>
+        + sp_api::ProvideRuntimeApi<Block>
+        + HeaderBackend<Block>
+        + HeaderMetadata<Block, Error = BlockChainError>
         + 'static,
-    C::Api: sp_block_builder::BlockBuilder<OpaqueBlock>,
-    C::Api: substrate_frame_rpc_system::AccountNonceApi<OpaqueBlock, AccountId, Nonce>,
-    C::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<OpaqueBlock, Balance>,
+    C::Api: sp_block_builder::BlockBuilder<Block>,
+    C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>,
+    C::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>,
+    C::Api: sp_consensus_babe::BabeApi<Block>,
+    SC: SelectChain<Block> + 'static,
+    BE: Backend<Block> + 'static,
     P: TransactionPool + 'static,
 {
     use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
+    use sc_consensus_babe_rpc::{Babe, BabeApiServer};
+    use sc_consensus_grandpa_rpc::{Grandpa, GrandpaApiServer};
     use substrate_frame_rpc_system::{System, SystemApiServer};
+
     let mut module = RpcModule::new(());
     let FullDeps {
         client,
         pool,
         deny_unsafe,
+        babe,
+        select_chain,
+        grandpa,
     } = deps;
 
+    let BabeDeps {
+        keystore,
+        babe_worker_handle,
+    } = babe;
+
+    let GrandpaDeps {
+        shared_voter_state,
+        shared_authority_set,
+        justification_stream,
+        subscription_executor,
+        finality_provider,
+    } = grandpa;
+
     module.merge(System::new(client.clone(), pool.clone(), deny_unsafe).into_rpc())?;
-    module.merge(TransactionPayment::new(client).into_rpc())?;
+    module.merge(TransactionPayment::new(client.clone()).into_rpc())?;
+    module.merge(
+        Babe::new(
+            client.clone(),
+            babe_worker_handle.clone(),
+            keystore,
+            select_chain,
+            deny_unsafe,
+        )
+        .into_rpc(),
+    )?;
+
+    module.merge(
+        Grandpa::new(
+            subscription_executor,
+            shared_authority_set.clone(),
+            shared_voter_state,
+            justification_stream,
+            finality_provider,
+        )
+        .into_rpc(),
+    )?;
 
     // You probably want to enable the `rpc v2 chainSpec` API as well
     //

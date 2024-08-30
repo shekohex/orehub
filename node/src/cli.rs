@@ -68,4 +68,43 @@ pub enum Subcommand {
     /// Sub-commands concerned with benchmarking.
     #[command(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
+    /// Bag threshold generation script for pallet-bag-list.
+    GenerateBags(GenerateBagsCmd),
+}
+
+#[derive(Debug, clap::Parser)]
+pub struct GenerateBagsCmd {
+    /// How many bags to generate.
+    #[arg(long, default_value_t = 200)]
+    n_bags: usize,
+
+    /// Where to write the output.
+    output: std::path::PathBuf,
+
+    /// The total issuance of the currency used to create `VoteWeight`.
+    #[arg(short, long)]
+    total_issuance: u128,
+
+    /// The minimum account balance (i.e. existential deposit) for the currency used to create
+    /// `VoteWeight`.
+    #[arg(short, long)]
+    minimum_balance: u128,
+}
+
+impl GenerateBagsCmd {
+    pub fn run(&self) -> Result<(), String> {
+        if cfg!(not(feature = "generate-bags")) {
+            return Err("This command is only available in the `generate-bags` feature.".into());
+        } else {
+            #[cfg(feature = "generate-bags")]
+            crate::generate_bags::generate_thresholds::<orehub_runtime::Runtime>(
+                self.n_bags,
+                &self.output,
+                self.total_issuance,
+                self.minimum_balance,
+            )
+            .map_err(|e| format!("{:?}", e))?;
+            Ok(())
+        }
+    }
 }
