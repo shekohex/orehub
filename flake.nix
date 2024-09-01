@@ -3,6 +3,13 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    zombienet = {
+        url = "github:paritytech/zombienet";
+        inputs = {
+            nixpkgs.follows = "nixpkgs";
+            flake-parts.inputs.nixpkgs.follows = "nixpkgs";
+        };
+    };
     # Rust
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
@@ -12,10 +19,10 @@
     };
   };
 
-  outputs = { self, nixpkgs, rust-overlay, flake-utils }:
+  outputs = { self, nixpkgs, rust-overlay, zombienet, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        overlays = [ (import rust-overlay) ];
+        overlays = [ (import rust-overlay) zombienet.overlays.default ];
         pkgs = import nixpkgs {
           inherit system overlays;
         };
@@ -48,7 +55,9 @@
             # Finally the toolchain
             toolchain
             pkgs.taplo
-            pkgs.nodePackages.vscode-langservers-extracted
+            pkgs.zombienet.default
+            pkgs.kind
+            pkgs.kubectl
           ];
           packages = [
             pkgs.cargo-nextest

@@ -59,6 +59,7 @@ impl SubstrateCli for Cli {
         Ok(match id {
             "dev" => Box::new(chain_spec::development_config()?),
             "" | "local" => Box::new(chain_spec::local_testnet_config()?),
+            "zombie-testnet" => Box::new(chain_spec::zombietestnet_config()?),
             path => Box::new(chain_spec::ChainSpec::from_json_file(
                 std::path::PathBuf::from(path),
             )?),
@@ -217,35 +218,51 @@ pub fn run() -> sc_cli::Result<()> {
         None => {
             let runner = cli.create_runner(&cli.run)?;
             runner.run_node_until_exit(|config| async move {
+                let hwbench = (cli.run.validator)
+                    .then_some(config.database.path().map(|database_path| {
+                        let _ = std::fs::create_dir_all(&database_path);
+                        sc_sysinfo::gather_hwbench(Some(database_path))
+                    }))
+                    .flatten();
                 match config.network.network_backend {
                     sc_network::config::NetworkBackendType::Libp2p => {
                         #[cfg(feature = "manual-seal")]
                         {
                             service::new_full::<sc_network::NetworkWorker<_, _>>(
-                                config,
-                                cli.consensus,
+                                crate::service::FullNodeArgs {
+                                    config,
+                                    consensus: cli.consensus,
+                                    hwbench,
+                                },
                             )
                             .map_err(sc_cli::Error::Service)
                         }
                         #[cfg(not(feature = "manual-seal"))]
                         {
-                            service::new_full::<sc_network::NetworkWorker<_, _>>(config)
-                                .map_err(sc_cli::Error::Service)
+                            service::new_full::<sc_network::NetworkWorker<_, _>>(
+                                crate::service::FullNodeArgs { config, hwbench },
+                            )
+                            .map_err(sc_cli::Error::Service)
                         }
                     }
                     sc_network::config::NetworkBackendType::Litep2p => {
                         #[cfg(feature = "manual-seal")]
                         {
                             service::new_full::<sc_network::Litep2pNetworkBackend>(
-                                config,
-                                cli.consensus,
+                                crate::service::FullNodeArgs {
+                                    config,
+                                    consensus: cli.consensus,
+                                    hwbench,
+                                },
                             )
                             .map_err(sc_cli::Error::Service)
                         }
                         #[cfg(not(feature = "manual-seal"))]
                         {
-                            service::new_full::<sc_network::Litep2pNetworkBackend>(config)
-                                .map_err(sc_cli::Error::Service)
+                            service::new_full::<sc_network::Litep2pNetworkBackend>(
+                                crate::service::FullNodeArgs { config, hwbench },
+                            )
+                            .map_err(sc_cli::Error::Service)
                         }
                     }
                 }

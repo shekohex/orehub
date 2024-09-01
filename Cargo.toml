@@ -42,10 +42,10 @@ sc-basic-authorship = { version = "0.44.0", default-features = false }
 sc-cli = { version = "0.46.0", default-features = false }
 sc-rpc = { version = "39.0.0", default-features = false }
 sc-client-api = { version = "37.0.0", default-features = false }
+sc-sysinfo = { version = "37.0.0", default-features = false }
 sc-consensus = { version = "0.43.0", default-features = false }
 sc-consensus-manual-seal = { version = "0.45.0", default-features = false }
-sc-consensus-babe = { version = "0.44.0", default-features = false }
-sc-consensus-babe-rpc = { version = "0.44.0", default-features = false }
+sc-consensus-aura = { version = "0.44.0", default-features = false }
 sc-consensus-grandpa = { version = "0.29.0", default-features = false }
 sc-consensus-grandpa-rpc = { version = "0.29.0", default-features = false }
 sc-consensus-slots = { version = "0.43.0", default-features = false }
@@ -63,7 +63,6 @@ sp-block-builder = { version = "34.0.0", default-features = false }
 sp-blockchain = { version = "37.0.0", default-features = false }
 sp-consensus = { version = "0.40.0", default-features = false }
 sp-consensus-aura = { version = "0.40.0", default-features = false }
-sp-consensus-babe = { version = "0.40.0", default-features = false }
 sp-consensus-grandpa = { version = "21.0.0", default-features = false }
 sp-core = { version = "34.0.0", default-features = false }
 sp-inherents = { version = "34.0.0", default-features = false }
@@ -78,7 +77,6 @@ substrate-build-script-utils = { version = "11.0.0", default-features = false }
 codec = { version = "3.6.12", default-features = false, package = "parity-scale-codec" }
 pallet-authorship = { version = "37.0.0", default-features = false }
 pallet-aura = { version = "36.0.0", default-features = false }
-pallet-babe = { version = "37.0.0", default-features = false }
 pallet-bags-list = { version = "36.0.0", default-features = false }
 pallet-balances = { version = "38.0.0", default-features = false }
 pallet-bounties = { version = "36.0.0", default-features = false }

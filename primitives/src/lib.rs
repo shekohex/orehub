@@ -8,7 +8,6 @@ use frame::{
     deps::sp_runtime::{generic, MultiAddress},
     runtime::types_common::{AccountId, BlockNumber},
 };
-pub use sp_consensus_babe::AuthorityId as BabeId;
 /// Account index type as expected by this runtime.
 pub type AccountIndex = u32;
 /// The address format for describing accounts.
@@ -31,7 +30,7 @@ pub mod time {
     /// slot_duration()`.
     ///
     /// Change this to adjust the block time.
-    pub const SECONDS_PER_BLOCK: Moment = 6;
+    pub const SECONDS_PER_BLOCK: Moment = 3;
 
     pub const MILLISECS_PER_BLOCK: Moment = SECONDS_PER_BLOCK * 1000;
     pub const SLOT_DURATION: Moment = MILLISECS_PER_BLOCK;
@@ -45,12 +44,18 @@ pub mod time {
     pub const PRIMARY_PROBABILITY: (u64, u64) = (1, 4);
 
     #[cfg(feature = "fast-runtime")]
-    pub const EPOCH_DURATION_IN_BLOCKS: BlockNumber = 10; // 10 blocks for fast tests
+    pub const EPOCH_DURATION_IN_BLOCKS: BlockNumber = 40; // 40 blocks for fast tests
 
     // NOTE: Currently it is not possible to change the epoch duration after the chain has started.
     //       Attempting to do so will brick block production.
     #[cfg(not(feature = "fast-runtime"))]
     pub const EPOCH_DURATION_IN_BLOCKS: BlockNumber = 4 * HOURS;
+
+    #[cfg(not(feature = "fast-runtime"))]
+    pub const SESSION_PERIOD_IN_BLOCKS: BlockNumber = 1 * HOURS;
+
+    #[cfg(feature = "fast-runtime")]
+    pub const SESSION_PERIOD_IN_BLOCKS: BlockNumber = 10; // 10 blocks for fast tests
 
     pub const EPOCH_DURATION_IN_SLOTS: u64 = {
         const SLOT_FILL_RATE: f64 = MILLISECS_PER_BLOCK as f64 / SLOT_DURATION as f64;
@@ -74,6 +79,8 @@ pub mod currency {
     pub const MICRORE: Balance = MILLIORE / 1000;
     /// A NanoORE is a billionth of a ORE = 0.000000001 ORE
     pub const NANORE: Balance = MICRORE / 1000;
+    /// A GRAIN is a smallest possible unit of ORE = 0.000000000001 ORE
+    pub const GRAIN: Balance = 1;
 
     // Monetary value
     // =============
@@ -88,7 +95,7 @@ pub mod currency {
 
     /// Return the cost to add an item to storage based on size
     pub const fn deposit(items: u32, bytes: u32) -> Balance {
-        items as Balance * 5 * CENT + (bytes as Balance) * 100 * MILLICENT
+        items as Balance * 5 * CENT + (bytes as Balance) * MILLICENT
     }
 }
 

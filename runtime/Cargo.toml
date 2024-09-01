@@ -19,7 +19,7 @@ frame-election-provider-support.workspace = true
 frame-metadata-hash-extension.workspace = true
 orehub-primitives.workspace = true
 pallet-authorship.workspace = true
-pallet-babe.workspace = true
+pallet-aura.workspace = true
 pallet-bags-list.workspace = true
 pallet-balances.workspace = true
 pallet-bounties.workspace = true
@@ -48,7 +48,7 @@ pallet-tx-pause.workspace = true
 pallet-utility.workspace = true
 
 sp-genesis-builder.workspace = true
-sp-consensus-babe.workspace = true
+sp-consensus-aura.workspace = true
 sp-runtime.workspace = true
 sp-staking.workspace = true
 
@@ -70,7 +70,7 @@ std = [
     "frame-election-provider-support/std",
 
 
-    "pallet-babe/std",
+    "pallet-aura/std",
     "pallet-bags-list/std",
     "pallet-balances/std",
     "pallet-bounties/std",
@@ -99,7 +99,7 @@ std = [
     "pallet-utility/std",
 
     "sp-genesis-builder/std",
-    "sp-consensus-babe/std",
+    "sp-consensus-aura/std",
     "sp-runtime/std",
     "sp-staking/std",
     "substrate-wasm-builder",
@@ -110,7 +110,6 @@ std = [
 runtime-benchmarks = [
     "frame/runtime-benchmarks",
     "frame-election-provider-support/runtime-benchmarks",
-    "pallet-babe/runtime-benchmarks",
     "pallet-bags-list/runtime-benchmarks",
     "pallet-balances/runtime-benchmarks",
     "pallet-bounties/runtime-benchmarks",
@@ -136,7 +135,7 @@ runtime-benchmarks = [
 try-runtime = [
     "frame/try-runtime",
     "frame-election-provider-support/try-runtime",
-    "pallet-babe/try-runtime",
+    "pallet-aura/try-runtime",
     "pallet-bags-list/try-runtime",
     "pallet-balances/try-runtime",
     "pallet-bounties/try-runtime",

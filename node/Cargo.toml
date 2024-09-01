@@ -22,6 +22,8 @@ jsonrpsee = { features = ["server"], workspace = true }
 serde_json = { workspace = true, default-features = true }
 sc-cli.workspace = true
 sc-cli.default-features = true
+sc-sysinfo.workspace = true
+sc-sysinfo.default-features = true
 sc-rpc.workspace = true
 sc-rpc.default-features = true
 sc-executor.workspace = true
@@ -38,12 +40,10 @@ sc-transaction-pool-api.workspace = true
 sc-transaction-pool-api.default-features = true
 sc-offchain.workspace = true
 sc-offchain.default-features = true
-sc-consensus-babe.workspace = true
-sc-consensus-babe.default-features = true
-sc-consensus-babe-rpc.workspace = true
-sc-consensus-babe-rpc.default-features = true
-sp-consensus-babe.workspace = true
-sp-consensus-babe.default-features = true
+sc-consensus-aura.workspace = true
+sc-consensus-aura.default-features = true
+sp-consensus-aura.workspace = true
+sp-consensus-aura.default-features = true
 sp-consensus.workspace = true
 sp-consensus.default-features = true
 sc-consensus.workspace = true
