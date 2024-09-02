@@ -143,13 +143,23 @@ OreHub implements a fee structure that allows for gassless mining-related transa
 
 ### 6.1 Validator Selection
 
-Validators are selected based on proof-of-work contributions, ensuring that the most committed miners secure the network.
+Validators are selected using the standard staking pallet. Users can lock up their ORE tokens as collateral to become validators. The more tokens locked up, the higher the chance of being selected as a validator. This is a common method used in proof-of-stake blockchains to secure the network.
 
-### 6.2 Slashing Mechanisms
+### 6.2 Guardian Selection
+
+Guardians are participants in the DKG process, which is critical for generating distributed keys used in the OreHub-Solana connection. Guardians are selected based on the following criteria:
+
+1. Must be in the active set of validators
+2. Selected by the DKG Pallet based on:
+   - Amount of ORE tokens locked in the staking pallet
+   - Duration as a validator
+   - Duration as a guardian
+
+### 6.3 Slashing Mechanisms
 
 The system implements slashing for spamming or submitting invalid solutions, discouraging malicious behavior.
 
-### 6.3 Multi-Signature Operations
+### 6.4 Multi-Signature Operations
 
 Critical operations require multi-signature approval through the DKG mechanism, enhancing security.
 
@@ -167,25 +177,83 @@ Most transactions on OreHub are feeless, with a small fixed fee applied only to 
 
 A portion of fees and donations are directed to a treasury, funding ongoing development and community initiatives.
 
-## 8. Challenges and Future Work
+### 7.4 Reward Distribution
 
-### 8.1 Scalability
+Rewards are distributed among miners, validators, and guardians based on their contributions:
+
+- Miners: Rewarded based on their last N difficulty shares (e.g., last 6 hours of shares)
+- Validators: Rewarded based on their era points
+- Guardians: Rewarded based on their contribution to the DKG process
+
+The exact distribution mechanism is still being refined to ensure fair and transparent reward allocation.
+
+## 8. Cross-Chain Operations
+
+### 8.1 OreHub to Solana Connection
+
+1. After the Genesis DKG process, the shared Public Key (ed25519 share public key) is added to the Pool Program on Solana.
+2. Transactions are generated on OreHub and signed using the threshold signature scheme (TSS).
+3. A relayer system sends the signed transaction to the Pool program on Solana.
+4. The Pool program executes the transaction after verifying the governor account's signature.
+
+### 8.2 Solana to OreHub Connection
+
+1. The Pool program on Solana returns transaction results as program logs.
+2. A relayer submits the transaction hash to OreHub for verification.
+3. Guardians verify the transaction hash and its result.
+4. If the majority of guardians agree, the result is saved on OreHub using a threshold signature scheme (TSS).
+
+## 9. Detailed Mining Process
+
+1. Genesis:
+   - Initial validators and guardians are set up by the OreHub team.
+   - DKG process generates a shared public key.
+   - Guardians sign a transaction to initialize the Pool program on Solana.
+
+2. Pool Initialization:
+   - A relayer sends the initialization transaction to Solana.
+   - The Pool program creates an Ore mining account and returns challenge information.
+
+3. Transaction Verification:
+   - Relayer submits the transaction hash to OreHub.
+   - Guardians verify the transaction and its result.
+
+4. Mining:
+   - Miners submit solutions to the OreHub mining pallet.
+   - Validators verify solutions and include them in blocks.
+   - Incorrect solutions result in penalties for miners and rewards for validators.
+
+5. Reward Claiming:
+   - At the end of each mining round, the highest difficulty solution is selected.
+   - A transaction is created and signed by guardians to claim the reward on Solana.
+   - The signed transaction is sent to the Pool program on Solana by a relayer.
+
+6. Result Verification:
+   - The Pool program executes the transaction and returns the result.
+   - Guardians verify the transaction hash and its result on OreHub.
+
+7. Reward Distribution:
+   - Rewards are recorded on-chain and distributed at the end of each epoch.
+
+## 10. Challenges and Future Work
+
+### 10.1 Scalability
 
 As the number of miners grows, ensuring efficient operation of the DKG protocol and timely transaction processing will be crucial.
 
-### 8.2 Cross-Chain Reliability
+### 10.2 Cross-Chain Reliability
 
 Maintaining consistent state between OreHub and Solana in the face of network issues or attacks requires robust mechanisms.
 
-### 8.3 Incentive Alignment
+### 10.3 Incentive Alignment
 
 Further research is needed to ensure that the incentive structure encourages participation and honest behavior across all roles in the system.
 
-## 9. Conclusion
+## 11. Conclusion
 
 OreHub presents a novel approach to decentralized mining pools, leveraging the strengths of both Substrate and Solana ecosystems. By combining proof-of-work mining with distributed key generation and cross-chain operations, OreHub aims to provide a secure, fair, and efficient pooled mining experience for Ore cryptocurrency. The use of a 2/3 threshold for the TSS in the DKG provides strong security guarantees, requiring an attacker to control a supermajority of the pool's hash power to compromise the system. While challenges remain, particularly in scalability and cross-chain reliability, the proposed system offers a promising direction for decentralized infrastructure in the cryptocurrency space.
 
-## 10. FAQs and Open Questions
+## 12. FAQs and Open Questions
 
 1. Q: How does OreHub ensure fair distribution of rewards among miners?
    A: This requires further research and potentially the implementation of a verifiable random function (VRF) for reward distribution.
@@ -216,7 +284,7 @@ OreHub presents a novel approach to decentralized mining pools, leveraging the s
 
 These questions highlight areas where further research, development, and community discussion are needed to refine and improve the OreHub concept.
 
-## 11. References
+## 13. References
 
 1. [Ore](https://ore.supply/)
 2. [Solana](https://solana.com/)
