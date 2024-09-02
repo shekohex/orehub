@@ -60,9 +60,7 @@ impl SubstrateCli for Cli {
             "dev" => Box::new(chain_spec::development_config()?),
             "" | "local" => Box::new(chain_spec::local_testnet_config()?),
             "zombie-testnet" => Box::new(chain_spec::zombietestnet_config()?),
-            path => Box::new(chain_spec::ChainSpec::from_json_file(
-                std::path::PathBuf::from(path),
-            )?),
+            path => Box::new(chain_spec::ChainSpec::from_json_file(std::path::PathBuf::from(path))?),
         })
     }
 }
@@ -76,73 +74,50 @@ pub fn run() -> sc_cli::Result<()> {
         Some(Subcommand::BuildSpec(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.sync_run(|config| cmd.run(config.chain_spec, config.network))
-        }
+        },
         Some(Subcommand::CheckBlock(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|config| {
-                let PartialComponents {
-                    client,
-                    task_manager,
-                    import_queue,
-                    ..
-                } = service::new_partial(&config)?;
+                let PartialComponents { client, task_manager, import_queue, .. } = service::new_partial(&config)?;
                 Ok((cmd.run(client, import_queue), task_manager))
             })
-        }
+        },
         Some(Subcommand::ExportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|config| {
-                let PartialComponents {
-                    client,
-                    task_manager,
-                    ..
-                } = service::new_partial(&config)?;
+                let PartialComponents { client, task_manager, .. } = service::new_partial(&config)?;
                 Ok((cmd.run(client, config.database), task_manager))
             })
-        }
+        },
         Some(Subcommand::ExportState(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|config| {
-                let PartialComponents {
-                    client,
-                    task_manager,
-                    ..
-                } = service::new_partial(&config)?;
+                let PartialComponents { client, task_manager, .. } = service::new_partial(&config)?;
                 Ok((cmd.run(client, config.chain_spec), task_manager))
             })
-        }
+        },
         Some(Subcommand::ImportBlocks(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|config| {
-                let PartialComponents {
-                    client,
-                    task_manager,
-                    import_queue,
-                    ..
-                } = service::new_partial(&config)?;
+                let PartialComponents { client, task_manager, import_queue, .. } = service::new_partial(&config)?;
                 Ok((cmd.run(client, import_queue), task_manager))
             })
-        }
+        },
         Some(Subcommand::PurgeChain(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.sync_run(|config| cmd.run(config.database))
-        }
+        },
         Some(Subcommand::Revert(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.async_run(|config| {
-                let PartialComponents {
-                    client,
-                    task_manager,
-                    backend,
-                    ..
-                } = service::new_partial(&config)?;
+                let PartialComponents { client, task_manager, backend, .. } = service::new_partial(&config)?;
                 Ok((cmd.run(client, backend, None), task_manager))
             })
-        }
+        },
         Some(Subcommand::ChainInfo(cmd)) => {
             let runner = cli.create_runner(cmd)?;
             runner.sync_run(|config| cmd.run::<orehub_runtime::interface::OpaqueBlock>(&config))
-        }
+        },
         Some(Subcommand::GenerateBags(cmd)) => Ok(cmd.run()?),
         Some(Subcommand::Benchmark(cmd)) => {
             let runner = cli.create_runner(cmd)?;
@@ -153,48 +128,37 @@ pub fn run() -> sc_cli::Result<()> {
                 match cmd {
                     BenchmarkCmd::Pallet(cmd) => {
                         if !cfg!(feature = "runtime-benchmarks") {
-                            return Err(
-                                "Runtime benchmarking wasn't enabled when building the node. \
+                            return Err("Runtime benchmarking wasn't enabled when building the node. \
 							You can enable it with `--features runtime-benchmarks`."
-                                    .into(),
-                            );
+                                .into());
                         }
 
                         cmd.run_with_spec::<sp_runtime::traits::HashingFor<orehub_runtime::Block>, ()>(Some(
                             config.chain_spec,
                         ))
-                    }
+                    },
                     BenchmarkCmd::Block(cmd) => {
                         let PartialComponents { client, .. } = service::new_partial(&config)?;
                         cmd.run(client)
-                    }
+                    },
                     #[cfg(not(feature = "runtime-benchmarks"))]
-                    BenchmarkCmd::Storage(_) => Err(
-                        "Storage benchmarking can be enabled with `--features runtime-benchmarks`."
-                            .into(),
-                    ),
+                    BenchmarkCmd::Storage(_) => {
+                        Err("Storage benchmarking can be enabled with `--features runtime-benchmarks`.".into())
+                    },
                     #[cfg(feature = "runtime-benchmarks")]
                     BenchmarkCmd::Storage(cmd) => {
-                        let PartialComponents {
-                            client, backend, ..
-                        } = service::new_partial(&config)?;
+                        let PartialComponents { client, backend, .. } = service::new_partial(&config)?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
 
                         cmd.run(config, client, db, storage)
-                    }
+                    },
                     BenchmarkCmd::Overhead(cmd) => {
                         let PartialComponents { client, .. } = service::new_partial(&config)?;
                         let ext_builder = RemarkBuilder::new(client.clone());
 
-                        cmd.run(
-                            config,
-                            client,
-                            inherent_benchmark_data()?,
-                            Vec::new(),
-                            &ext_builder,
-                        )
-                    }
+                        cmd.run(config, client, inherent_benchmark_data()?, Vec::new(), &ext_builder)
+                    },
                     BenchmarkCmd::Extrinsic(cmd) => {
                         let PartialComponents { client, .. } = service::new_partial(&config)?;
                         // Register the *Remark* and *TKA* builders.
@@ -208,13 +172,11 @@ pub fn run() -> sc_cli::Result<()> {
                         ]);
 
                         cmd.run(client, inherent_benchmark_data()?, Vec::new(), &ext_factory)
-                    }
-                    BenchmarkCmd::Machine(cmd) => {
-                        cmd.run(&config, SUBSTRATE_REFERENCE_HARDWARE.clone())
-                    }
+                    },
+                    BenchmarkCmd::Machine(cmd) => cmd.run(&config, SUBSTRATE_REFERENCE_HARDWARE.clone()),
                 }
             })
-        }
+        },
         None => {
             let runner = cli.create_runner(&cli.run)?;
             runner.run_node_until_exit(|config| async move {
@@ -228,45 +190,43 @@ pub fn run() -> sc_cli::Result<()> {
                     sc_network::config::NetworkBackendType::Libp2p => {
                         #[cfg(feature = "manual-seal")]
                         {
-                            service::new_full::<sc_network::NetworkWorker<_, _>>(
-                                crate::service::FullNodeArgs {
-                                    config,
-                                    consensus: cli.consensus,
-                                    hwbench,
-                                },
-                            )
+                            service::new_full::<sc_network::NetworkWorker<_, _>>(crate::service::FullNodeArgs {
+                                config,
+                                consensus: cli.consensus,
+                                hwbench,
+                            })
                             .map_err(sc_cli::Error::Service)
                         }
                         #[cfg(not(feature = "manual-seal"))]
                         {
-                            service::new_full::<sc_network::NetworkWorker<_, _>>(
-                                crate::service::FullNodeArgs { config, hwbench },
-                            )
+                            service::new_full::<sc_network::NetworkWorker<_, _>>(crate::service::FullNodeArgs {
+                                config,
+                                hwbench,
+                            })
                             .map_err(sc_cli::Error::Service)
                         }
-                    }
+                    },
                     sc_network::config::NetworkBackendType::Litep2p => {
                         #[cfg(feature = "manual-seal")]
                         {
-                            service::new_full::<sc_network::Litep2pNetworkBackend>(
-                                crate::service::FullNodeArgs {
-                                    config,
-                                    consensus: cli.consensus,
-                                    hwbench,
-                                },
-                            )
+                            service::new_full::<sc_network::Litep2pNetworkBackend>(crate::service::FullNodeArgs {
+                                config,
+                                consensus: cli.consensus,
+                                hwbench,
+                            })
                             .map_err(sc_cli::Error::Service)
                         }
                         #[cfg(not(feature = "manual-seal"))]
                         {
-                            service::new_full::<sc_network::Litep2pNetworkBackend>(
-                                crate::service::FullNodeArgs { config, hwbench },
-                            )
+                            service::new_full::<sc_network::Litep2pNetworkBackend>(crate::service::FullNodeArgs {
+                                config,
+                                hwbench,
+                            })
                             .map_err(sc_cli::Error::Service)
                         }
-                    }
+                    },
                 }
             })
-        }
+        },
     }
 }

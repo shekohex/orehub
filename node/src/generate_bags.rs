@@ -49,10 +49,7 @@ use std::{
 /// Note that this value depends on the current issuance, a quantity known to change over time.
 /// This makes the project of computing a static value suitable for inclusion in a static,
 /// generated file _excitingly unstable_.
-fn existential_weight<T: pallet_staking::Config>(
-    total_issuance: u128,
-    minimum_balance: u128,
-) -> VoteWeight {
+fn existential_weight<T: pallet_staking::Config>(total_issuance: u128, minimum_balance: u128) -> VoteWeight {
     use sp_staking::currency_to_vote::CurrencyToVote;
 
     T::CurrencyToVote::to_vote(
@@ -112,11 +109,7 @@ pub fn constant_ratio(existential_weight: VoteWeight, n_bags: usize) -> f64 {
 ///
 /// All other elements are computed from the previous according to the formula
 /// `threshold[k + 1] = (threshold[k] * ratio).max(threshold[k] + 1);`
-pub fn thresholds(
-    existential_weight: VoteWeight,
-    constant_ratio: f64,
-    n_bags: usize,
-) -> Vec<VoteWeight> {
+pub fn thresholds(existential_weight: VoteWeight, constant_ratio: f64, n_bags: usize) -> Vec<VoteWeight> {
     const WEIGHT_LIMIT: f64 = VoteWeight::MAX as f64;
 
     let mut thresholds = Vec::with_capacity(n_bags);
@@ -127,9 +120,7 @@ pub fn thresholds(
 
     while n_bags > 0 && thresholds.len() < n_bags - 1 {
         let last = thresholds.last().copied().unwrap_or(existential_weight);
-        let successor = (last as f64 * constant_ratio)
-            .round()
-            .max(last as f64 + 1.0);
+        let successor = (last as f64 * constant_ratio).round().max(last as f64 + 1.0);
         if successor < WEIGHT_LIMIT {
             thresholds.push(successor as VoteWeight);
         } else {
@@ -182,10 +173,7 @@ pub fn generate_thresholds<T: pallet_staking::Config>(
     }
 
     // open an append buffer
-    let file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(output)?;
+    let file = std::fs::OpenOptions::new().create(true).append(true).open(output)?;
     let mut buf = std::io::BufWriter::new(file);
 
     // create underscore formatter and format buffer
@@ -202,11 +190,7 @@ pub fn generate_thresholds<T: pallet_staking::Config>(
     writeln!(buf, "//! Total issuance: {}", &total_issuance)?;
     writeln!(buf, "//! Minimum balance: {}", &minimum_balance)?;
 
-    writeln!(
-        buf,
-        "//! for the {} runtime.",
-        <T as frame_system::Config>::Version::get().spec_name,
-    )?;
+    writeln!(buf, "//! for the {} runtime.", <T as frame_system::Config>::Version::get().spec_name,)?;
 
     let existential_weight = existential_weight::<T>(total_issuance, minimum_balance);
     num_buf.write_formatted(&existential_weight, &format);
@@ -214,11 +198,7 @@ pub fn generate_thresholds<T: pallet_staking::Config>(
     writeln!(buf, "/// Existential weight for this runtime.")?;
     writeln!(buf, "#[cfg(any(test, feature = \"std\"))]")?;
     writeln!(buf, "#[allow(unused)]")?;
-    writeln!(
-        buf,
-        "pub const EXISTENTIAL_WEIGHT: u64 = {};",
-        num_buf.as_str()
-    )?;
+    writeln!(buf, "pub const EXISTENTIAL_WEIGHT: u64 = {};", num_buf.as_str())?;
 
     // constant ratio
     let constant_ratio = constant_ratio(existential_weight, n_bags);
@@ -226,11 +206,7 @@ pub fn generate_thresholds<T: pallet_staking::Config>(
     writeln!(buf, "/// Constant ratio between bags for this runtime.")?;
     writeln!(buf, "#[cfg(any(test, feature = \"std\"))]")?;
     writeln!(buf, "#[allow(unused)]")?;
-    writeln!(
-        buf,
-        "pub const CONSTANT_RATIO: f64 = {:.16};",
-        constant_ratio
-    )?;
+    writeln!(buf, "pub const CONSTANT_RATIO: f64 = {:.16};", constant_ratio)?;
 
     // thresholds
     let thresholds = thresholds(existential_weight, constant_ratio, n_bags);
@@ -247,11 +223,7 @@ pub fn generate_thresholds<T: pallet_staking::Config>(
     // thresholds balance
     writeln!(buf)?;
     writeln!(buf, "/// Upper thresholds delimiting the bag list.")?;
-    writeln!(
-        buf,
-        "pub const THRESHOLDS_BALANCES: [u128; {}] = [",
-        thresholds.len()
-    )?;
+    writeln!(buf, "pub const THRESHOLDS_BALANCES: [u128; {}] = [", thresholds.len())?;
     for threshold in thresholds {
         num_buf.write_formatted(&threshold, &format);
         // u64::MAX, with spacers every 3 digits, is 26 characters wide

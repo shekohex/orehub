@@ -3,15 +3,12 @@ use orehub_primitives::currency::ORE;
 use orehub_runtime::interface::AccountId;
 use orehub_runtime::interface::SS58Prefix;
 use orehub_runtime::WASM_BINARY;
+use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 use sc_service::{ChainType, Properties};
-// Used only during the development phase
-// in production, we will use Ed25519 keys
+use sp_consensus_aura::sr25519::AuthorityId as AuraId;
+use sp_consensus_grandpa::AuthorityId as GrandpaId;
 use sp_keyring::sr25519::sr25519::Public as AccountPublic;
 use sp_keyring::sr25519::Keyring as AccountKeyring;
-
-use pallet_im_online::ed25519::AuthorityId as ImOnlineId;
-use sp_consensus_aura::ed25519::AuthorityId as AuraId;
-use sp_consensus_grandpa::AuthorityId as GrandpaId;
 
 /// This is a specialization of the general Substrate ChainSpec type.
 pub type ChainSpec = sc_service::GenericChainSpec;
@@ -50,91 +47,76 @@ fn props() -> Properties {
 }
 
 pub fn development_config() -> Result<ChainSpec, String> {
-    Ok(ChainSpec::builder(
-        WASM_BINARY.expect("Development wasm not available"),
-        Default::default(),
-    )
-    .with_name("OreHub Development")
-    .with_id("dev")
-    .with_chain_type(ChainType::Development)
-    .with_genesis_config_patch(testnet_genesis(
-        // Initial PoA authorities
-        vec![
-            authority_keys_from_seed("Alice"),
-            // authority_keys_from_seed("Bob"),
-            // authority_keys_from_seed("Charlie"),
-            // authority_keys_from_seed("Dave"),
-            // authority_keys_from_seed("Eve"),
-        ],
-        // Sudo account
-        AccountKeyring::Alice.to_account_id(),
-        // Pre-funded accounts
-        vec![
+    Ok(ChainSpec::builder(WASM_BINARY.expect("Development wasm not available"), Default::default())
+        .with_name("OreHub Development")
+        .with_id("dev")
+        .with_chain_type(ChainType::Development)
+        .with_genesis_config_patch(testnet_genesis(
+            // Initial PoA authorities
+            vec![
+                authority_keys_from_seed("Alice"),
+                // authority_keys_from_seed("Bob"),
+                // authority_keys_from_seed("Charlie"),
+                // authority_keys_from_seed("Dave"),
+                // authority_keys_from_seed("Eve"),
+            ],
+            // Sudo account
             AccountKeyring::Alice.to_account_id(),
-            AccountKeyring::Bob.to_account_id(),
-            AccountKeyring::Charlie.to_account_id(),
-            AccountKeyring::Dave.to_account_id(),
-            AccountKeyring::Eve.to_account_id(),
-        ],
-    ))
-    .with_properties(props())
-    .build())
+            // Pre-funded accounts
+            vec![
+                AccountKeyring::Alice.to_account_id(),
+                AccountKeyring::Bob.to_account_id(),
+                AccountKeyring::Charlie.to_account_id(),
+                AccountKeyring::Dave.to_account_id(),
+                AccountKeyring::Eve.to_account_id(),
+            ],
+        ))
+        .with_properties(props())
+        .build())
 }
 
 pub fn local_testnet_config() -> Result<ChainSpec, String> {
-    Ok(ChainSpec::builder(
-        WASM_BINARY.expect("Development wasm not available"),
-        Default::default(),
-    )
-    .with_name("OreHub Local Testnet")
-    .with_id("local_testnet")
-    .with_chain_type(ChainType::Local)
-    .with_genesis_config_patch(testnet_genesis(
-        // Initial PoA authorities
-        vec![
-            authority_keys_from_seed("Alice"),
-            authority_keys_from_seed("Bob"),
-            authority_keys_from_seed("Charlie"),
-        ],
-        // Sudo account
-        AccountKeyring::Alice.to_account_id(),
-        // Pre-funded accounts
-        vec![
+    Ok(ChainSpec::builder(WASM_BINARY.expect("Development wasm not available"), Default::default())
+        .with_name("OreHub Local Testnet")
+        .with_id("local_testnet")
+        .with_chain_type(ChainType::Local)
+        .with_genesis_config_patch(testnet_genesis(
+            // Initial PoA authorities
+            vec![
+                authority_keys_from_seed("Alice"),
+                authority_keys_from_seed("Bob"),
+                authority_keys_from_seed("Charlie"),
+            ],
+            // Sudo account
             AccountKeyring::Alice.to_account_id(),
-            AccountKeyring::Bob.to_account_id(),
-            AccountKeyring::Charlie.to_account_id(),
-            AccountKeyring::Dave.to_account_id(),
-            AccountKeyring::Eve.to_account_id(),
-        ],
-    ))
-    .with_properties(props())
-    .build())
+            // Pre-funded accounts
+            vec![
+                AccountKeyring::Alice.to_account_id(),
+                AccountKeyring::Bob.to_account_id(),
+                AccountKeyring::Charlie.to_account_id(),
+                AccountKeyring::Dave.to_account_id(),
+                AccountKeyring::Eve.to_account_id(),
+            ],
+        ))
+        .with_properties(props())
+        .build())
 }
 
 pub fn zombietestnet_config() -> Result<ChainSpec, String> {
-    Ok(ChainSpec::builder(
-        WASM_BINARY.expect("Development wasm not available"),
-        Default::default(),
-    )
-    .with_name("OreHub ZombieTestnet")
-    .with_id("zombie_testnet")
-    .with_chain_type(ChainType::Local)
-    .with_genesis_config_patch(testnet_genesis(
-        // Initial PoA authorities
-        vec![],
-        // Sudo account
-        AccountKeyring::Alice.to_account_id(),
-        // Pre-funded accounts
-        vec![
+    Ok(ChainSpec::builder(WASM_BINARY.expect("Development wasm not available"), Default::default())
+        .with_name("OreHub ZombieTestnet")
+        .with_id("zombie_testnet")
+        .with_chain_type(ChainType::Local)
+        .with_genesis_config_patch(testnet_genesis(
+            // Initial PoA authorities
+            vec![],
+            // Sudo account
             AccountKeyring::Alice.to_account_id(),
-            AccountKeyring::Bob.to_account_id(),
-            AccountKeyring::Charlie.to_account_id(),
-            AccountKeyring::Dave.to_account_id(),
-            AccountKeyring::Eve.to_account_id(),
-        ],
-    ))
-    .with_properties(props())
-    .build())
+            // Pre-funded accounts
+            vec![],
+        ))
+        .with_properties(props())
+        .build())
 }
 
 /// Configure initial storage state for FRAME modules.
@@ -153,12 +135,12 @@ fn testnet_genesis(
             "keys": initial_authorities.iter().map(|x| (
                 x.account.clone(),
                 x.account.clone(),
-                (x.aura.clone(), x.grandpa.clone(), x.im_online.clone()),
+                serde_json::json!({ "aura": x.aura, "grandpa": x.grandpa, "im_online": x.im_online })
             )).collect::<Vec<_>>(),
         },
         "staking": {
             "validatorCount": initial_authorities.len(),
-            "minimumValidatorCount": initial_authorities.len().saturating_sub(1),
+            "minimumValidatorCount": 1,
             "invulnerables": initial_authorities.iter().map(|x| x.account.clone()).collect::<Vec<_>>(),
             "slashRewardFraction": 0,
             "stakers": initial_authorities.iter().map(|x| (

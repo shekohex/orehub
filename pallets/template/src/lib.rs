@@ -29,10 +29,7 @@ pub mod pallet {
             let _who = ensure_signed(origin)?;
             let valid = Self::is_odd(number);
 
-            Ok(PostDispatchInfo {
-                actual_weight: None,
-                pays_fee: if valid { Pays::No } else { Pays::Yes },
-            })
+            Ok(PostDispatchInfo { actual_weight: None, pays_fee: if valid { Pays::No } else { Pays::Yes } })
         }
     }
 

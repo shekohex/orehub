@@ -62,12 +62,7 @@ where
     use substrate_frame_rpc_system::{System, SystemApiServer};
 
     let mut module = RpcModule::new(());
-    let FullDeps {
-        client,
-        pool,
-        deny_unsafe,
-        grandpa,
-    } = deps;
+    let FullDeps { client, pool, deny_unsafe, grandpa } = deps;
 
     let GrandpaDeps {
         shared_voter_state,

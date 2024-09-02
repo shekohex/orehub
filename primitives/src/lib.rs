@@ -104,8 +104,7 @@ pub mod fee {
     use frame::{
         arithmetic::Perbill,
         deps::frame_support::weights::{
-            constants::ExtrinsicBaseWeight, WeightToFeeCoefficient, WeightToFeeCoefficients,
-            WeightToFeePolynomial,
+            constants::ExtrinsicBaseWeight, WeightToFeeCoefficient, WeightToFeeCoefficients, WeightToFeePolynomial,
         },
     };
     use smallvec::smallvec;
@@ -231,20 +230,17 @@ pub const MAX_BLOCK_SIZE: u32 = 3 * 1024 * 1024; // 3 MB
 
 /// We assume that ~10% of the block weight is consumed by `on_initialize` handlers. This is
 /// used to limit the maximal weight of a single extrinsic.
-pub const AVERAGE_ON_INITIALIZE_RATIO: frame::arithmetic::Perbill =
-    frame::arithmetic::Perbill::from_percent(10);
+pub const AVERAGE_ON_INITIALIZE_RATIO: frame::arithmetic::Perbill = frame::arithmetic::Perbill::from_percent(10);
 
 /// We allow `Normal` extrinsics to fill up the block up to 85%, the rest can be used by
 /// `Operational` extrinsics.
-pub const NORMAL_DISPATCH_RATIO: frame::arithmetic::Perbill =
-    frame::arithmetic::Perbill::from_percent(85);
+pub const NORMAL_DISPATCH_RATIO: frame::arithmetic::Perbill = frame::arithmetic::Perbill::from_percent(85);
 
 /// We allow for 2000ms of compute with a 6 second average block time.
 pub const WEIGHT_MILLISECS_PER_BLOCK: u64 = 2000;
 /// The maximum weight of a block (in `Weight` units) that we are willing to produce.
 pub const MAXIMUM_BLOCK_WEIGHT: frame::prelude::Weight = frame::prelude::Weight::from_parts(
-    WEIGHT_MILLISECS_PER_BLOCK
-        * frame::deps::frame_support::weights::constants::WEIGHT_REF_TIME_PER_MILLIS,
+    WEIGHT_MILLISECS_PER_BLOCK * frame::deps::frame_support::weights::constants::WEIGHT_REF_TIME_PER_MILLIS,
     u64::MAX,
 );
 

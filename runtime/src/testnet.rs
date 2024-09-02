@@ -15,15 +15,14 @@ use frame::{
     primitives::*,
     runtime::{
         apis::{
-            self, ed25519::AuthorityId as AuraId, impl_runtime_apis, ApplyExtrinsicResult,
-            AuthorityId as GrandpaId, CheckInherentsResult, ExtrinsicInclusionMode, OpaqueMetadata,
+            self, impl_runtime_apis, ApplyExtrinsicResult, CheckInherentsResult, ExtrinsicInclusionMode, OpaqueMetadata,
         },
         prelude::*,
         types_common::*,
     },
     traits::{
-        tokens::PayFromAccount, Block as BlockT, Currency, EitherOfDiverse, IdentityLookup,
-        Imbalance, LockIdentifier, NumberFor, OnUnbalanced, StaticLookup,
+        tokens::PayFromAccount, Block as BlockT, Currency, EitherOfDiverse, IdentityLookup, Imbalance, LockIdentifier,
+        NumberFor, OnUnbalanced, StaticLookup,
     },
 };
 use frame_election_provider_support::bounds::ElectionBounds;
@@ -38,19 +37,20 @@ use orehub_primitives::currency::{MICRORE, MILLIORE, ORE};
 use orehub_primitives::fee;
 use orehub_primitives::{
     currency::{self, Balance},
-    democracy, elections, staking, time, treasury, AccountIndex, Address, Hash, Header, Nonce,
-    MAXIMUM_BLOCK_WEIGHT, MAX_BLOCK_SIZE, NORMAL_DISPATCH_RATIO, TESTNET_SS58_PREFIX,
+    democracy, elections, staking, time, treasury, AccountIndex, Address, Hash, Header, Nonce, MAXIMUM_BLOCK_WEIGHT,
+    MAX_BLOCK_SIZE, NORMAL_DISPATCH_RATIO, TESTNET_SS58_PREFIX,
 };
 use pallet_election_provider_multi_phase::GeometricDepositBase;
 use pallet_election_provider_multi_phase::SolutionAccuracyOf;
-use pallet_im_online::ed25519::AuthorityId as ImOnlineId;
-use pallet_transaction_payment::{
-    FeeDetails, Multiplier, RuntimeDispatchInfo, TargetedFeeAdjustment,
-};
+use pallet_transaction_payment::{FeeDetails, Multiplier, RuntimeDispatchInfo, TargetedFeeAdjustment};
 use sp_runtime::Deserialize;
 use sp_runtime::Serialize;
 use sp_runtime::{generic, KeyTypeId};
 use sp_staking::currency_to_vote::U128CurrencyToVote;
+
+pub type AuraId = frame::runtime::apis::sr25519::AuthorityId;
+pub type ImOnlineId = pallet_im_online::sr25519::AuthorityId;
+pub type GrandpaId = frame::runtime::apis::AuthorityId;
 
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
@@ -100,10 +100,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
 pub fn native_version() -> NativeVersion {
-    NativeVersion {
-        runtime_version: VERSION,
-        can_author_with: Default::default(),
-    }
+    NativeVersion { runtime_version: VERSION, can_author_with: Default::default() }
 }
 
 /// The signed extensions that are added to the runtime.
@@ -384,9 +381,8 @@ impl pallet_authorship::Config for Runtime {
     type FindAuthor = pallet_session::FindAccountFromAuthorIndex<Self, Aura>;
 }
 
-pub type NegativeImbalance<T> = <pallet_balances::Pallet<T> as Currency<
-    <T as frame_system::Config>::AccountId,
->>::NegativeImbalance;
+pub type NegativeImbalance<T> =
+    <pallet_balances::Pallet<T> as Currency<<T as frame_system::Config>::AccountId>>::NegativeImbalance;
 
 pub struct DealWithFees<R>(core::marker::PhantomData<R>);
 impl<R> OnUnbalanced<NegativeImbalance<R>> for DealWithFees<R>
@@ -439,18 +435,12 @@ parameter_types! {
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     #[allow(deprecated)]
-    type OnChargeTransaction =
-        pallet_transaction_payment::CurrencyAdapter<Balances, DealWithFees<Runtime>>;
+    type OnChargeTransaction = pallet_transaction_payment::CurrencyAdapter<Balances, DealWithFees<Runtime>>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
     type WeightToFee = fee::WeightToFee;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = TargetedFeeAdjustment<
-        Self,
-        TargetBlockFullness,
-        AdjustmentVariable,
-        MinimumMultiplier,
-        MaximumMultiplier,
-    >;
+    type FeeMultiplierUpdate =
+        TargetedFeeAdjustment<Self, TargetBlockFullness, AdjustmentVariable, MinimumMultiplier, MaximumMultiplier>;
 }
 
 parameter_types! {
@@ -493,9 +483,7 @@ use crate::opaque::SessionKeys;
 
 pub struct ValidatorToAccountIdConverter;
 
-impl frame::traits::Convert<interface::AccountId, Option<interface::AccountId>>
-    for ValidatorToAccountIdConverter
-{
+impl frame::traits::Convert<interface::AccountId, Option<interface::AccountId>> for ValidatorToAccountIdConverter {
     fn convert(account: interface::AccountId) -> Option<interface::AccountId> {
         Some(account)
     }
@@ -598,26 +586,20 @@ impl pallet_democracy::Config for Runtime {
     type VoteLockingPeriod = EnactmentPeriod; // Same as EnactmentPeriod
     type MinimumDeposit = MinimumDeposit;
     /// A straight majority of the council can decide what their next motion is.
-    type ExternalOrigin =
-        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 2>;
+    type ExternalOrigin = pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 2>;
     /// A super-majority can have the next scheduled referendum be a straight majority-carries vote.
-    type ExternalMajorityOrigin =
-        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>;
+    type ExternalMajorityOrigin = pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 3, 4>;
     /// A unanimous council can have the next scheduled referendum be a straight default-carries
     /// (NTB) vote.
-    type ExternalDefaultOrigin =
-        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 1>;
+    type ExternalDefaultOrigin = pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 1>;
     /// Two thirds of the council can have an ExternalMajority/ExternalDefault vote
     /// be tabled immediately and with a shorter voting/enactment period.
-    type FastTrackOrigin =
-        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 2, 3>;
-    type InstantOrigin =
-        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 1>;
+    type FastTrackOrigin = pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 2, 3>;
+    type InstantOrigin = pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 1, 1>;
     type InstantAllowed = frame::traits::ConstBool<true>;
     type FastTrackVotingPeriod = FastTrackVotingPeriod;
     // To cancel a proposal which has been passed, 2/3 of the council must agree to it.
-    type CancellationOrigin =
-        pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 2, 3>;
+    type CancellationOrigin = pallet_collective::EnsureProportionAtLeast<AccountId, CouncilCollective, 2, 3>;
     // To cancel a proposal before it has been passed, the council must be unanimous or
     // Root must agree.
     type CancelProposalOrigin = EitherOfDiverse<
@@ -743,13 +725,10 @@ impl Get<Option<BalancingConfig>> for OffchainRandomBalancing {
                     .expect("input is padded with zeroes; qed")
                     % max.saturating_add(1);
                 random as usize
-            }
+            },
         };
 
-        let config = BalancingConfig {
-            iterations,
-            tolerance: 0,
-        };
+        let config = BalancingConfig { iterations, tolerance: 0 };
         Some(config)
     }
 }
@@ -757,10 +736,7 @@ impl Get<Option<BalancingConfig>> for OffchainRandomBalancing {
 pub struct OnChainSeqPhragmen;
 impl onchain::Config for OnChainSeqPhragmen {
     type System = Runtime;
-    type Solver = SequentialPhragmen<
-        AccountId,
-        pallet_election_provider_multi_phase::SolutionAccuracyOf<Runtime>,
-    >;
+    type Solver = SequentialPhragmen<AccountId, pallet_election_provider_multi_phase::SolutionAccuracyOf<Runtime>>;
     type DataProvider = <Runtime as pallet_election_provider_multi_phase::Config>::DataProvider;
     type WeightInfo = frame_election_provider_support::weights::SubstrateWeight<Runtime>;
     type MaxWinners = <Runtime as pallet_election_provider_multi_phase::Config>::MaxWinners;
@@ -804,8 +780,7 @@ impl pallet_election_provider_multi_phase::Config for Runtime {
     type MinerConfig = Self;
     type SignedMaxSubmissions = ConstU32<10>;
     type SignedRewardBase = SignedRewardBase;
-    type SignedDepositBase =
-        GeometricDepositBase<Balance, SignedFixedDeposit, SignedDepositIncreaseFactor>;
+    type SignedDepositBase = GeometricDepositBase<Balance, SignedFixedDeposit, SignedDepositIncreaseFactor>;
     type SignedDepositByte = SignedDepositByte;
     type SignedMaxRefunds = ConstU32<3>;
     type SignedDepositWeight = ();
@@ -850,16 +825,10 @@ where
         public: <Signature as frame::traits::Verify>::Signer,
         account: AccountId,
         nonce: Nonce,
-    ) -> Option<(
-        RuntimeCall,
-        <UncheckedExtrinsic as frame::traits::Extrinsic>::SignaturePayload,
-    )> {
+    ) -> Option<(RuntimeCall, <UncheckedExtrinsic as frame::traits::Extrinsic>::SignaturePayload)> {
         let tip = 0;
         // take the biggest period possible.
-        let period = BlockHashCount::get()
-            .checked_next_power_of_two()
-            .map(|c| c / 2)
-            .unwrap_or(2);
+        let period = BlockHashCount::get().checked_next_power_of_two().map(|c| c / 2).unwrap_or(2);
         let current_block = System::block_number()
             .saturated_into::<u32>()
             // The `System::block_number` is initialized with `n+1`,
@@ -1007,14 +976,9 @@ impl pallet_im_online::Config for Runtime {
 /// Calls that cannot be paused by the tx-pause pallet.
 pub struct TxPauseWhitelistedCalls;
 /// Whitelist `Balances::transfer_keep_alive`, all others are pauseable.
-impl frame::traits::Contains<pallet_tx_pause::RuntimeCallNameOf<Runtime>>
-    for TxPauseWhitelistedCalls
-{
+impl frame::traits::Contains<pallet_tx_pause::RuntimeCallNameOf<Runtime>> for TxPauseWhitelistedCalls {
     fn contains(full_name: &pallet_tx_pause::RuntimeCallNameOf<Runtime>) -> bool {
-        matches!(
-            (full_name.0.as_slice(), full_name.1.as_slice()),
-            (b"Balances", b"transfer_keep_alive")
-        )
+        matches!((full_name.0.as_slice(), full_name.1.as_slice()), (b"Balances", b"transfer_keep_alive"))
     }
 }
 
@@ -1101,8 +1065,7 @@ impl pallet_orehub::Config for Runtime {}
 type Migrations = ();
 
 /// Unchecked extrinsic type as expected by this runtime.
-pub type UncheckedExtrinsic =
-    generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
+pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 
 /// Block type as expected by this runtime.
 pub type Block = generic::Block<Header, UncheckedExtrinsic>;
@@ -1110,14 +1073,8 @@ pub type Block = generic::Block<Header, UncheckedExtrinsic>;
 /// The payload being signed in transactions.
 pub type SignedPayload = generic::SignedPayload<RuntimeCall, SignedExtra>;
 /// Executive: handles dispatch to the various modules.
-pub type RuntimeExecutive = Executive<
-    Runtime,
-    Block,
-    frame_system::ChainContext<Runtime>,
-    Runtime,
-    AllPalletsWithSystem,
-    Migrations,
->;
+pub type RuntimeExecutive =
+    Executive<Runtime, Block, frame_system::ChainContext<Runtime>, Runtime, AllPalletsWithSystem, Migrations>;
 
 impl_runtime_apis! {
     impl apis::Core<Block> for Runtime {

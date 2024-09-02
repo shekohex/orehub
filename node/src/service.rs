@@ -1,20 +1,3 @@
-// This file is part of Substrate.
-
-// Copyright (C) Parity Technologies (UK) Ltd.
-// SPDX-License-Identifier: Apache-2.0
-
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-// 	http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 use futures::FutureExt;
 use orehub_runtime::{interface::OpaqueBlock as Block, RuntimeApi};
 use sc_client_api::{Backend, BlockBackend};
@@ -29,23 +12,19 @@ use std::sync::Arc;
 use crate::cli::Consensus;
 
 #[cfg(feature = "runtime-benchmarks")]
-type HostFunctions = (
-    sp_io::SubstrateHostFunctions,
-    frame_benchmarking::benchmarking::HostFunctions,
-);
+type HostFunctions = (sp_io::SubstrateHostFunctions, frame_benchmarking::benchmarking::HostFunctions);
 
 #[cfg(not(feature = "runtime-benchmarks"))]
 type HostFunctions = sp_io::SubstrateHostFunctions;
 
 #[docify::export]
-pub(crate) type FullClient =
-    sc_service::TFullClient<Block, RuntimeApi, WasmExecutor<HostFunctions>>;
+pub(crate) type FullClient = sc_service::TFullClient<Block, RuntimeApi, WasmExecutor<HostFunctions>>;
 
 type FullBackend = sc_service::TFullBackend<Block>;
 type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
 #[cfg(not(feature = "manual-seal"))]
-type AuraPair = sp_consensus_aura::ed25519::AuthorityPair;
+type AuraPair = sp_consensus_aura::sr25519::AuthorityPair;
 
 /// The minimum period of blocks on which justifications will be
 /// imported and generated.
@@ -90,18 +69,15 @@ pub fn new_partial(config: &Configuration) -> Result<Service, ServiceError> {
 
     let executor = sc_service::new_wasm_executor(config);
 
-    let (client, backend, keystore_container, task_manager) =
-        sc_service::new_full_parts::<Block, RuntimeApi, _>(
-            config,
-            telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
-            executor,
-        )?;
+    let (client, backend, keystore_container, task_manager) = sc_service::new_full_parts::<Block, RuntimeApi, _>(
+        config,
+        telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
+        executor,
+    )?;
     let client = Arc::new(client);
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
-        task_manager
-            .spawn_handle()
-            .spawn("telemetry", None, worker.run());
+        task_manager.spawn_handle().spawn("telemetry", None, worker.run());
         telemetry
     });
 
@@ -133,20 +109,20 @@ pub fn new_partial(config: &Configuration) -> Result<Service, ServiceError> {
     #[cfg(not(feature = "manual-seal"))]
     let cidp_client = client.clone();
     #[cfg(not(feature = "manual-seal"))]
-    let import_queue = sc_consensus_aura::import_queue::<AuraPair, _, _, _, _, _>(
-        sc_consensus_aura::ImportQueueParams {
+    let import_queue =
+        sc_consensus_aura::import_queue::<AuraPair, _, _, _, _, _>(sc_consensus_aura::ImportQueueParams {
             block_import: grandpa_block_import.clone(),
             justification_import: Some(Box::new(grandpa_block_import.clone())),
             client: client.clone(),
             create_inherent_data_providers: move |parent_hash, _| {
                 let cidp_client = cidp_client.clone();
                 async move {
-                    let slot_duration = sc_consensus_aura::standalone::slot_duration_at(
-                        &*cidp_client,
-                        parent_hash,
-                    )?;
+                    let slot_duration = sc_consensus_aura::standalone::slot_duration_at(&*cidp_client, parent_hash)?;
                     let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
-                    let slot = sp_consensus_aura::inherents::InherentDataProvider::from_timestamp_and_slot_duration(*timestamp, slot_duration);
+                    let slot = sp_consensus_aura::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
+                        *timestamp,
+                        slot_duration,
+                    );
                     Ok((slot, timestamp))
                 }
             },
@@ -155,8 +131,7 @@ pub fn new_partial(config: &Configuration) -> Result<Service, ServiceError> {
             check_for_equivocation: Default::default(),
             telemetry: telemetry.as_ref().map(|x| x.handle()),
             compatibility_mode: Default::default(),
-        },
-    )?;
+        })?;
 
     Ok(sc_service::PartialComponents {
         client,
@@ -209,31 +184,19 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
     let (mut telemetry,) = other_stuff;
 
     #[cfg(feature = "manual-seal")]
-    let net_config = sc_network::config::FullNetworkConfiguration::<
-        Block,
-        <Block as BlockT>::Hash,
-        Network,
-    >::new(&config.network);
+    let net_config =
+        sc_network::config::FullNetworkConfiguration::<Block, <Block as BlockT>::Hash, Network>::new(&config.network);
 
     #[cfg(not(feature = "manual-seal"))]
-    let mut net_config = sc_network::config::FullNetworkConfiguration::<
-        Block,
-        <Block as BlockT>::Hash,
-        Network,
-    >::new(&config.network);
-    let metrics = Network::register_notification_metrics(
-        config.prometheus_config.as_ref().map(|cfg| &cfg.registry),
-    );
+    let mut net_config =
+        sc_network::config::FullNetworkConfiguration::<Block, <Block as BlockT>::Hash, Network>::new(&config.network);
+    let metrics = Network::register_notification_metrics(config.prometheus_config.as_ref().map(|cfg| &cfg.registry));
 
     #[cfg(not(feature = "manual-seal"))]
     let peer_store_handle = net_config.peer_store_handle();
     #[cfg(not(feature = "manual-seal"))]
     let grandpa_protocol_name = sc_consensus_grandpa::protocol_standard_name(
-        &client
-            .block_hash(0)
-            .ok()
-            .flatten()
-            .expect("Genesis block exists; qed"),
+        &client.block_hash(0).ok().flatten().expect("Genesis block exists; qed"),
         &config.chain_spec,
     );
 
@@ -281,9 +244,7 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
                 is_validator: config.role.is_authority(),
                 keystore: Some(keystore_container.keystore()),
                 offchain_db: backend.offchain_storage(),
-                transaction_pool: Some(OffchainTransactionPoolFactory::new(
-                    transaction_pool.clone(),
-                )),
+                transaction_pool: Some(OffchainTransactionPoolFactory::new(transaction_pool.clone())),
                 network_provider: Arc::new(network.clone()),
                 enable_http_requests: true,
                 custom_extensions: |_| vec![],
@@ -310,23 +271,21 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
             Some(shared_authority_set.clone()),
         );
 
-        Box::new(
-            move |deny_unsafe, subscription_task_executor: sc_rpc::SubscriptionTaskExecutor| {
-                let deps = crate::rpc::FullDeps {
-                    client: client.clone(),
-                    pool: pool.clone(),
-                    deny_unsafe,
-                    grandpa: crate::rpc::GrandpaDeps {
-                        shared_voter_state: shared_voter_state.clone(),
-                        shared_authority_set: shared_authority_set.clone(),
-                        justification_stream: justification_stream.clone(),
-                        subscription_executor: subscription_task_executor.clone(),
-                        finality_provider: finality_proof_provider.clone(),
-                    },
-                };
-                crate::rpc::create_full(deps).map_err(Into::into)
-            },
-        )
+        Box::new(move |deny_unsafe, subscription_task_executor: sc_rpc::SubscriptionTaskExecutor| {
+            let deps = crate::rpc::FullDeps {
+                client: client.clone(),
+                pool: pool.clone(),
+                deny_unsafe,
+                grandpa: crate::rpc::GrandpaDeps {
+                    shared_voter_state: shared_voter_state.clone(),
+                    shared_authority_set: shared_authority_set.clone(),
+                    justification_stream: justification_stream.clone(),
+                    subscription_executor: subscription_task_executor.clone(),
+                    finality_provider: finality_proof_provider.clone(),
+                },
+            };
+            crate::rpc::create_full(deps).map_err(Into::into)
+        })
     };
 
     let _rpc_handlers = sc_service::spawn_tasks(sc_service::SpawnTasksParams {
@@ -353,8 +312,8 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
 				https://wiki.polkadot.network/docs/maintain-guides-how-to-validate-polkadot#reference-hardware",
 				err
 			);
-            }
-            _ => {}
+            },
+            _ => {},
         }
 
         if let Some(ref mut telemetry) = telemetry {
@@ -394,29 +353,24 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
 
             let authorship_future = sc_consensus_manual_seal::run_instant_seal(params);
 
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "instant-seal",
-                None,
-                authorship_future,
-            );
-        }
+            task_manager
+                .spawn_essential_handle()
+                .spawn_blocking("instant-seal", None, authorship_future);
+        },
         Consensus::ManualSeal(block_time) => {
             let (mut sink, commands_stream) = futures::channel::mpsc::channel(1024);
-            task_manager
-                .spawn_handle()
-                .spawn("block_authoring", None, async move {
-                    loop {
-                        futures_timer::Delay::new(std::time::Duration::from_millis(block_time))
-                            .await;
-                        sink.try_send(sc_consensus_manual_seal::EngineCommand::SealNewBlock {
-                            create_empty: true,
-                            finalize: true,
-                            parent_hash: None,
-                            sender: None,
-                        })
-                        .unwrap();
-                    }
-                });
+            task_manager.spawn_handle().spawn("block_authoring", None, async move {
+                loop {
+                    futures_timer::Delay::new(std::time::Duration::from_millis(block_time)).await;
+                    sink.try_send(sc_consensus_manual_seal::EngineCommand::SealNewBlock {
+                        create_empty: true,
+                        finalize: true,
+                        parent_hash: None,
+                        sender: None,
+                    })
+                    .unwrap();
+                }
+            });
 
             let params = sc_consensus_manual_seal::ManualSealParams {
                 block_import: client.clone(),
@@ -432,12 +386,10 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
             };
             let authorship_future = sc_consensus_manual_seal::run_manual_seal(params);
 
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "manual-seal",
-                None,
-                authorship_future,
-            );
-        }
+            task_manager
+                .spawn_essential_handle()
+                .spawn_blocking("manual-seal", None, authorship_future);
+        },
     }
 
     // Aura and Grandpa stuff
@@ -451,8 +403,7 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
             telemetry.as_ref().map(|x| x.handle()),
         );
 
-        let backoff_authoring_blocks =
-            Some(sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging::default());
+        let backoff_authoring_blocks = Some(sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging::default());
 
         let slot_duration = sc_consensus_aura::slot_duration(&*client)?;
 
@@ -465,7 +416,10 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
                 proposer_factory,
                 create_inherent_data_providers: move |_, ()| async move {
                     let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
-                    let slot = sp_consensus_aura::inherents::InherentDataProvider::from_timestamp_and_slot_duration(*timestamp, slot_duration);
+                    let slot = sp_consensus_aura::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
+                        *timestamp,
+                        slot_duration,
+                    );
                     Ok((slot, timestamp))
                 },
                 force_authoring,
@@ -491,11 +445,7 @@ pub fn new_full<Network: sc_network::NetworkBackend<Block, <Block as BlockT>::Ha
     if enable_grandpa {
         // if the node isn't actively participating in consensus then it doesn't
         // need a keystore, regardless of which protocol we use below.
-        let keystore = if role.is_authority() {
-            Some(keystore_container.keystore())
-        } else {
-            None
-        };
+        let keystore = if role.is_authority() { Some(keystore_container.keystore()) } else { None };
 
         let grandpa_config = sc_consensus_grandpa::Config {
             // FIXME #1578 make this available through chainspec
