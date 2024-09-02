@@ -1,0 +1,18 @@
+settings:
+  provider: native
+relaychain:
+  default_command: ./target/release/orehub-node
+  default_keystore_key_types: [aura, gran, imon]
+  max_nominations: 16
+  chain: zombie-testnet
+  nodes:
+    - name: alice
+      validator: true
+      invulnerable: true
+      add_to_bootnodes: true
+    - name: bob
+      validator: true
+      invulnerable: true
+    - name: charlie
+      validator: true
+      invulnerable: true
