@@ -7,13 +7,14 @@ edition = "2021"
 publish = false
 
 [workspace]
-members = ["node", "pallets/template", "primitives", "runtime"]
+members = ["client/light", "node", "pallets/template", "primitives", "runtime"]
 resolver = "2"
 
 [workspace.metadata.poladkdot-sdk]
 version = "1.15.0"
 
 [workspace.dependencies]
+orehub-client = { path = "./client/light", default-features = false }
 orehub-primitives = { path = "./primitives", default-features = false }
 orehub-runtime = { path = "./runtime", default-features = false }
 pallet-orehub = { path = "./pallets/template", default-features = false }
@@ -112,3 +113,8 @@ sp-transaction-pool = { version = "34.0.0", default-features = false }
 sp-transaction-storage-proof = { version = "34.0.0", default-features = false }
 sp-version = { version = "37.0.0", default-features = false }
 substrate-wasm-builder = { version = "24.0.0", default-features = false }
+
+# Orehub Client
+subxt = { version = "0.37.0", default-features = false }
+subxt-signer = { version = "0.37.0", default-features = false }
+subxt-core = { version = "0.37.0", default-features = false }

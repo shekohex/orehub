@@ -1,0 +1,25 @@
+[package]
+name = "orehub-client"
+version = "0.1.0"
+description = "Rust bindings and interface to interact with Orehub using subxt"
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+publish.workspace = true
+keywords = ["blockchain", "ore", "orehub"]
+categories = ["cryptography", "cryptography::cryptocurrencies"]
+exclude = ["./metadata"]
+readme = "README.md"
+
+[dependencies]
+subxt = { workspace = true, default-features = false, optional = true }
+subxt-signer = { workspace = true, default-features = false, features = ["subxt", "sr25519"] }
+subxt-core.workspace = true
+
+[features]
+default = ["std", "subxt/native"]
+std = ["dep:subxt", "subxt/jsonrpsee", "subxt-signer/std", "subxt-core/std"]
+web = ["dep:subxt", "subxt/jsonrpsee", "subxt/web", "subxt-signer/web"]
+lightclient = ["dep:subxt", "subxt/unstable-light-client"]

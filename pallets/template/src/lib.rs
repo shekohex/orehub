@@ -10,7 +10,7 @@ use frame::prelude::*;
 // Re-export all pallet parts, this is needed to properly import the pallet into the runtime.
 pub use pallet::*;
 
-#[frame::pallet]
+#[frame::pallet(dev_mode)]
 pub mod pallet {
     use frame::deps::frame_support::dispatch::PostDispatchInfo;
 
@@ -24,7 +24,6 @@ pub mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        #[pallet::weight(10_000)]
         pub fn check_is_odd(origin: OriginFor<T>, number: u32) -> DispatchResultWithPostInfo {
             let _who = ensure_signed(origin)?;
             let valid = Self::is_odd(number);
