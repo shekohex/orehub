@@ -62,25 +62,6 @@ This threshold ensures that:
 1. As long as more than 1/3 of the participants are honest, the system remains secure.
 2. An attacker would need to control more than 2/3 of the participants to compromise the system.
 
-### 3.2 Relation to Hash Power
-
-In OreHub, validator selection (and thus DKG participation) is tied to proof-of-work contributions. Therefore, the $\frac{2}{3}$ threshold translates directly to hash power:
-
-- An attacker would need to control more than $\frac{2}{3}$ of the pool's total hash power to compromise the DKG.
-- This is significantly more challenging than a traditional 51% attack.
-
-The probability of a successful attack, $P(attack)$, can be modeled as:
-
-$$P(attack) = \begin{cases}
-0 & \text{if } H_{attacker} \leq \frac{2H_{total}}{3} \\
-f(H_{attacker}) & \text{if } H_{attacker} > \frac{2H_{total}}{3}
-\end{cases}$$
-
-Where:
-- $H_{attacker}$ is the attacker's hash power
-- $H_{total}$ is the total hash power of the pool
-- $f(H_{attacker})$ is a function that increases rapidly as $H_{attacker}$ approaches $H_{total}$
-
 This security model provides robust protection against various attacks, including traditional 51% attacks, and aligns with Byzantine Fault Tolerant (BFT) consensus mechanisms.
 
 ## 4. Operational Flow
