@@ -7,7 +7,7 @@ edition = "2021"
 publish = false
 
 [workspace]
-members = ["client/light", "node", "pallets/template", "primitives", "runtime"]
+members = ["client/*", "node", "pallets/*", "primitives", "runtime"]
 resolver = "2"
 
 [workspace.metadata.poladkdot-sdk]
@@ -18,6 +18,7 @@ orehub-client = { path = "./client/light", default-features = false }
 orehub-primitives = { path = "./primitives", default-features = false }
 orehub-runtime = { path = "./runtime", default-features = false }
 pallet-orehub = { path = "./pallets/template", default-features = false }
+pallet-guardians = { path = "./pallets/guardians", default-features = false }
 
 serde = { version = "1.0", default-features = false }
 static_assertions = { version = "1.1.0", default-features = false }

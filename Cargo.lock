@@ -5907,6 +5907,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-gardians"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "polkadot-sdk-frame",
+ "scale-info",
+]
+
+[[package]]
 name = "pallet-grandpa"
 version = "37.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
