@@ -4,6 +4,9 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand, UniformRand};
 use zeroize::Zeroize;
 
+#[cfg(not(feature = "std"))]
+use ark_std::vec::Vec;
+
 use crate::sig::Signature;
 
 /// A Public Key is a curve point in G2.
