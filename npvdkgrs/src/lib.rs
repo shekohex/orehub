@@ -6,7 +6,7 @@
 //! Built using [Arkworks](https://arkworks.rs/)
 
 /// Encryption and Decryption functions
-pub mod enc;
+pub mod cipher;
 /// Hashing functions
 pub mod hash;
 /// Key Pair is a struct that contains the public and private keys
