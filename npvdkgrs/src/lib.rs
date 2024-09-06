@@ -5,9 +5,11 @@
 //! Non-interactive publicly verifiable distributed key generation and resharing algorithm over BLS12-381
 //! Built using [Arkworks](https://arkworks.rs/)
 
+/// Encryption and Decryption functions
+pub mod enc;
 /// Hashing functions
 pub mod hash;
 /// Key Pair is a struct that contains the public and private keys
-pub mod keypair;
+pub mod keys;
 /// Signing and Signatures
-pub mod signature;
+pub mod sig;

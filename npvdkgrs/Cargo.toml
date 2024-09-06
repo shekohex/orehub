@@ -13,13 +13,15 @@ publish.workspace = true
 ark-std.workspace = true
 ark-ff.workspace = true
 ark-ec.workspace = true
-sha3.workspace = true
 ark-serialize = { workspace = true, default-features = false, features = ["derive"] }
 ark-bls12-381 = { workspace = true, default-features = false, features = ["curve"] }
-zeroize.workspace = true
 
+sha3.workspace = true
+zeroize.workspace = true
 thiserror.workspace = true
 thiserror.optional = true
+
+chacha20poly1305 = { workspace = true, default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 ark-std.workspace = true
@@ -27,8 +29,17 @@ ark-std.features = ["std", "getrandom"]
 
 [features]
 default = ["std"]
-std = ["ark-std/std", "ark-serialize/std", "ark-ff/std", "ark-ec/std", "ark-bls12-381/std", "sha3/std", "dep:thiserror"]
+std = [
+    "ark-std/std",
+    "ark-serialize/std",
+    "ark-ff/std",
+    "ark-ec/std",
+    "ark-bls12-381/std",
+    "sha3/std",
+    "chacha20poly1305/std",
+    "dep:thiserror",
+]
 parallel = ["ark-std/parallel", "ark-ff/parallel", "ark-ec/parallel"]
 asm = ["ark-ff/asm", "sha3/asm"]
 print-trace = ["ark-std/print-trace"]
-getrandom = ["ark-std/getrandom"]
+getrandom = ["ark-std/getrandom", "chacha20poly1305/getrandom"]

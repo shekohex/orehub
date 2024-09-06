@@ -2,7 +2,7 @@ use ark_bls12_381::{Bls12_381, G1Affine, G1Projective, G2Affine};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
-use crate::keypair::PublicKey;
+use crate::keys::PublicKey;
 
 /// A Signature is a curve point in G1.
 #[derive(Debug, Clone, Copy, CanonicalSerialize, CanonicalDeserialize)]

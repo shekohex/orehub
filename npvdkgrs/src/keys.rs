@@ -4,7 +4,7 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::{rand, UniformRand};
 use zeroize::Zeroize;
 
-use crate::signature::Signature;
+use crate::sig::Signature;
 
 /// A Public Key is a curve point in G2.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
@@ -84,6 +84,12 @@ impl From<HashToCurveError> for SigningError {
 }
 
 impl SecretKey {
+    /// Return the public key corresponding to this secret key
+    pub fn public(&self) -> PublicKey {
+        let g = G2Affine::generator();
+        let pk = (g * self.0).into_affine().into();
+        pk
+    }
     /// Get the SecretKey as a field element
     ///
     /// NOTE: you should not use this function unless you know what you are doing.
@@ -114,9 +120,8 @@ pub struct Keypair {
 impl Keypair {
     /// Create a new keypair from a secret key
     pub fn from_sk(sk: SecretKey) -> Self {
-        let g = G2Affine::generator();
-        let pk = (g * sk.0).into_affine().into();
-        Self { sk: sk.into(), pk }
+        let pk = sk.public();
+        Self { sk, pk }
     }
 
     pub fn rand<R: rand::Rng + rand::CryptoRng + ?Sized>(rng: &mut R) -> Self {
@@ -130,8 +135,8 @@ impl Keypair {
     }
 
     /// Get the Secret key of the keypair
-    pub fn sk(&self) -> &SecretKey {
-        &self.sk
+    pub fn sk(&self) -> SecretKey {
+        self.sk
     }
 
     /// Sign a message with the secret key and return the signature
