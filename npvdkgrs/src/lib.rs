@@ -11,5 +11,7 @@ pub mod cipher;
 pub mod hash;
 /// Key Pair is a struct that contains the public and private keys
 pub mod keys;
+/// Sharing of secrets and verification
+pub mod share;
 /// Signing and Signatures
 pub mod sig;

@@ -1,10 +1,12 @@
-use ark_bls12_381::{Fr, G1Affine, G1Projective as G1, G2Affine, G2Projective as G2};
+use ark_bls12_381::Fr;
+use ark_bls12_381::{Fq, G1Affine, G1Projective as G1, G2Affine, G2Projective as G2};
 use ark_ec::hashing::{
     curve_maps::wb::WBMap, map_to_curve_hasher::MapToCurveBasedHasher, HashToCurve, HashToCurveError,
 };
 use ark_ff::field_hashers::DefaultFieldHasher;
+use ark_ff::BigInteger;
 use ark_ff::PrimeField;
-use sha3::{digest::FixedOutput, Digest, Keccak256};
+use sha3::{digest::FixedOutput, Digest, Keccak256, Keccak384};
 
 /// Hash to field hasher
 type H2F = DefaultFieldHasher<Keccak256>;
@@ -37,11 +39,29 @@ pub fn hash_to_g2(msg: &[u8]) -> Result<G2Affine, HashToCurveError> {
 
 /// Produce a hash of the message, which also depends on the domain.
 /// The output of the hash is a scalar field element.
-pub fn hash_to_fp(msg: &[u8]) -> Fr {
+pub fn hash_to_fp(msg: &[u8]) -> Fq {
+    let mut hasher = Keccak384::new();
+    hasher.update(msg);
+    let hash = hasher.finalize_fixed();
+    Fq::from_le_bytes_mod_order(&hash)
+}
+
+/// Produce a hash of the message, which also depends on the domain.
+/// The output of the hash is a scalar field element.
+pub fn hash_to_fr(msg: &[u8]) -> Fr {
     let mut hasher = Keccak256::new();
     hasher.update(msg);
     let hash = hasher.finalize_fixed();
     Fr::from_le_bytes_mod_order(&hash)
+}
+
+/// Produce a hash of the [Fq] Scalar field element.
+pub fn hash_fq_to_32(f: Fq) -> [u8; 32] {
+    let mut hasher = Keccak256::new();
+    let bytes = f.into_bigint().to_bytes_le();
+    hasher.update(&bytes);
+    let hash = hasher.finalize_fixed();
+    hash.into()
 }
 
 #[cfg(test)]
