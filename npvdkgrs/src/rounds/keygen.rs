@@ -207,9 +207,9 @@ where
     let self_address = keypair.address().map_err(Bug::Serialization)?;
     let result = shares_map.clone().recover_keys(&self_address, keypair.sk(), &participants_map);
     match result {
-        Ok((gvk, share_keypair)) => {
+        Ok((gvk_poly, share_keypair)) => {
             tracer.protocol_ends();
-            Ok(KeysharePackage { n, t, i, share_keypair, gvk })
+            Ok(KeysharePackage { n, t, i, share_keypair, gvk_poly })
         },
         Err(SharesError::InvalidShareVectorLength(_)) => Err(KeygenAborted::FewerThanNShares(n).into()),
         Err(SharesError::InvalidShares(who)) => {
@@ -342,12 +342,12 @@ mod tests {
         for i in 1..n {
             let pkg2 = &outputs[usize::from(i)];
 
-            let expected = pkg.gvk;
-            let actual = pkg2.gvk;
+            let expected = pkg.global_verification_key();
+            let actual = pkg2.global_verification_key();
             assert_eq!(expected, actual, "Party {i} failed, expected 0x{expected} but got 0x{actual}",);
         }
 
-        eprintln!("Group PublicKey: {}", pkg.gvk);
+        eprintln!("Group PublicKey: {}", pkg.global_verification_key());
     }
 
     fn generate_keypairs(n: u16) -> Vec<Keypair> {

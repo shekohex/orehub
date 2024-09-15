@@ -24,8 +24,9 @@ pub struct KeysharePackage {
     pub i: u16,
     /// Local Keypair
     pub share_keypair: Keypair,
-    /// Global public key
-    pub gvk: PublicKey,
+    /// Global Public Key Polynomial Coefficients
+    #[serde(with = "crate::ark")]
+    pub gvk_poly: Vec<G2Projective>,
 }
 
 impl KeysharePackage {
@@ -43,7 +44,7 @@ impl KeysharePackage {
     ///
     /// This the public key of the DKG.
     pub fn global_verification_key(&self) -> PublicKey {
-        self.gvk
+        self.gvk_poly[0].into()
     }
 
     /// Get the local public key.

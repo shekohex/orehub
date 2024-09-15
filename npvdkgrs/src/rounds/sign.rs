@@ -3,7 +3,9 @@ use ark_std::vec::Vec;
 use round_based::{rounds_router::RoundsRouter, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt};
 use serde::{Deserialize, Serialize};
 
-use crate::{addr::Address, keys::PublicKey, party::KeysharePackage, sig::Signature, trace::Tracer};
+use crate::{
+    addr::Address, keys::PublicKey, party::KeysharePackage, poly::DenseGPolynomial, sig::Signature, trace::Tracer,
+};
 
 use super::{store::ThresholdRoundInput, IoError};
 
@@ -132,26 +134,41 @@ where
         return Err(SigningAborted::NotEnoughShares(t + 1).into());
     }
 
+    let gvk = pkg.global_verification_key();
     let mut sig_points = Vec::with_capacity(msgs.len());
     let mut addrs_scalars = Vec::with_capacity(msgs.len());
+    let gshvk_poly = DenseGPolynomial::from_coefficients_slice(&pkg.gvk_poly);
+
+    let mut blames = Vec::new();
 
     for (j, msg) in msgs.into_iter().enumerate() {
         let Some(PartialSignatureMsg { signature }) = msg else {
             // absent participant
             continue;
         };
+        // verify the partial signature
         let sender = all_participants.get(j).ok_or(Bug::ParticipantIndexOutOfBounds(j))?;
         let sender_addr = Address::try_from(sender).map_err(Bug::Serialization)?;
-        addrs_scalars.push(sender_addr.as_scalar());
-        sig_points.push(signature.into_projective());
-        // TODO: check if the signature is valid?
+        let gshvk_j = gshvk_poly.evaluate(&sender_addr.as_scalar());
+        let valid = signature.verify(msg_to_be_signed, &gshvk_j.into());
+        if valid {
+            addrs_scalars.push(sender_addr.as_scalar());
+            sig_points.push(signature.into_projective());
+        } else {
+            // TODO: add more information to blames
+            blames.push(sender);
+        }
+    }
+
+    if !blames.is_empty() {
+        // TODO: report blames
     }
 
     tracer.stage("Combine Partial Signatures");
     let global_sig_poly = crate::poly::interpolate(&addrs_scalars, &sig_points).map_err(Bug::Interpolation)?;
     let global_sig = Signature::from(global_sig_poly[0]);
     tracer.stage("Verify Combined Signature");
-    let valid = global_sig.verify(msg_to_be_signed, &pkg.gvk);
+    let valid = global_sig.verify(msg_to_be_signed, &gvk);
     if !valid {
         return Err(SigningAborted::InvalidGlobalSignature.into());
     }
@@ -209,12 +226,12 @@ mod tests {
         for i in 1..n {
             let pkg2 = &outputs[usize::from(i)];
 
-            let expected = pkg.gvk;
-            let actual = pkg2.gvk;
-            assert_eq!(expected, actual, "Party {i} failed, expected 0x{expected} but got 0x{actual}",);
+            let expected = pkg.global_verification_key();
+            let actual = pkg2.global_verification_key();
+            assert_eq!(expected, actual, "Party {i} failed, expected 0x{expected} but got 0x{actual}");
         }
 
-        eprintln!("Group PublicKey: {}", pkg.gvk);
+        eprintln!("Group PublicKey: {}", pkg.global_verification_key());
 
         eprintln!("Running {t}-out-of-{n} Signing");
         // Now we can test the signing
@@ -243,7 +260,7 @@ mod tests {
 
         // Verify the signature
         for sig in sig_outputs.iter() {
-            let valid = sig.verify(msg, &pkg.gvk);
+            let valid = sig.verify(msg, &pkg.global_verification_key());
             assert!(valid, "Signature is invalid");
         }
     }

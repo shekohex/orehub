@@ -146,7 +146,7 @@ impl SharesMap {
         self_address: &Address,
         self_privkey: SecretKey,
         participants: &BTreeMap<Address, PublicKey>,
-    ) -> Result<(PublicKey, Keypair), Error> {
+    ) -> Result<(Vec<G2Projective>, Keypair), Error> {
         if participants.len() != self.share_vec_len {
             return Err(Error::InvalidParticipantsLength(participants.len()));
         }
@@ -176,7 +176,6 @@ impl SharesMap {
         decrypted_shsks.zeroize();
 
         let gshvk_poly = poly::interpolate(&all_id_scalars, &interpolated_shvks)?;
-        let gvk = gshvk_poly[0].into();
         let shsk = shsk.into();
         let share_keypair = Keypair::from_sk(shsk);
         let shpk = interpolated_shvks[self_index].into();
@@ -184,7 +183,7 @@ impl SharesMap {
             return Err(Error::InvalidShareKeypair);
         }
 
-        Ok((gvk, share_keypair))
+        Ok((gshvk_poly, share_keypair))
     }
 }
 
