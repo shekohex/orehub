@@ -3,6 +3,7 @@ use ark_ec::{hashing::HashToCurveError, pairing::Pairing, AffineRepr, CurveGroup
 use ark_ff::Field;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use ark_std::{rand, vec::Vec, UniformRand};
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
 use crate::keys::{PublicKey, SecretKey};
@@ -10,7 +11,7 @@ use crate::keys::{PublicKey, SecretKey};
 /// A Public Verifiable Secret Share.
 ///
 /// it contains an Encrypted Share and a verification key.
-#[derive(Clone, Debug, Copy, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Debug, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 pub struct PublicShare {
     /// The Verification Key
     pub vk: PublicKey,
@@ -18,29 +19,26 @@ pub struct PublicShare {
     pub esh: EncryptedShare,
 }
 
-#[derive(Clone, Copy, Debug, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 pub struct EncryptedShare {
+    #[serde(with = "crate::ark")]
     pub c: Fr,
+    #[serde(with = "crate::ark")]
     pub u: G2Affine,
+    #[serde(with = "crate::ark")]
     pub v: G1Affine,
 }
 
-#[derive(Debug)]
+#[derive(Debug, displaydoc::Display)]
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
 pub enum Error {
-    /// Serialization error
-    #[cfg_attr(feature = "std", error(transparent))]
-    Serialization(#[cfg_attr(feature = "std", from)] SerializationError),
-    /// Error during Hashing to Curve
-    #[cfg_attr(feature = "std", error(transparent))]
-    HashToCurve(#[cfg_attr(feature = "std", from)] HashToCurveError),
-
+    /// Serialization error: {0}
+    Serialization(#[cfg_attr(feature = "std", from, source)] SerializationError),
+    /// Error during Hashing to Curve: {0}
+    HashToCurve(#[cfg_attr(feature = "std", from, source)] HashToCurveError),
     /// Error during Calculating the Inverse of $R$
-    #[cfg_attr(feature = "std", error("Error during Calculating the Inverse of `R`"))]
     InverseOfR,
-
     /// Invalid Encrypted Share
-    #[cfg_attr(feature = "std", error("Failed to verify the Encrypted Share"))]
     InvalidShare,
 }
 
@@ -67,7 +65,7 @@ impl EncryptedShare {
     ) -> Result<Self, Error> {
         let mut r = Fr::rand(rng);
         let q = crate::hash::hash_to_g1(id)?;
-        let p = pk.into_projective() * r;
+        let p = (pk.into_affine() * r).into_affine();
         let e = Bls12_381::pairing(q, p);
         let mut eh_bytes = Vec::with_capacity(e.compressed_size());
         e.serialize_compressed(&mut eh_bytes)?;
@@ -116,7 +114,7 @@ impl EncryptedShare {
 
     /// Decrypt the Encrypted Share with the given ID and Secret Key.
     pub fn decrypt(&self, id: &[u8], sk: SecretKey) -> Result<Fr, Error> {
-        let q = crate::hash::hash_to_g1(id).unwrap();
+        let q = crate::hash::hash_to_g1(id)?;
         let s = (q * sk.expose_secret()).into_affine();
         let e = Bls12_381::pairing(s, self.u);
         let mut eh_bytes = Vec::with_capacity(e.compressed_size());

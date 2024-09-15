@@ -1,17 +1,34 @@
-use ark_bls12_381::{Fr, G2Affine};
+use core::ops::Add;
+
+use ark_bls12_381::{Fr, G2Affine, G2Projective};
 use ark_ec::{hashing::HashToCurveError, AffineRepr, CurveGroup};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{rand, UniformRand};
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
+use ark_std::{rand, vec::Vec, UniformRand};
+use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-#[cfg(not(feature = "std"))]
-use ark_std::vec::Vec;
-
-use crate::sig::Signature;
+use crate::{addr::Address, sig::Signature};
 
 /// A Public Key is a curve point in G2.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PublicKey(G2Affine);
+#[derive(Debug, Copy, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PublicKey(#[serde(with = "crate::ark")] G2Affine);
+
+impl Ord for PublicKey {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.0
+            .x
+            .cmp(&other.0.x)
+            .then_with(|| self.0.y.cmp(&other.0.y))
+            .then_with(|| self.0.infinity.cmp(&other.0.infinity))
+    }
+}
+
+impl PartialOrd for PublicKey {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 impl From<G2Affine> for PublicKey {
     fn from(pk: G2Affine) -> Self {
@@ -22,6 +39,18 @@ impl From<G2Affine> for PublicKey {
 impl From<PublicKey> for G2Affine {
     fn from(pk: PublicKey) -> G2Affine {
         pk.0
+    }
+}
+
+impl From<G2Projective> for PublicKey {
+    fn from(pk: G2Projective) -> Self {
+        Self(pk.into())
+    }
+}
+
+impl From<PublicKey> for G2Projective {
+    fn from(pk: PublicKey) -> G2Projective {
+        pk.into_projective()
     }
 }
 
@@ -38,14 +67,51 @@ impl PublicKey {
     }
 
     /// Get the PublicKey as a Projective point
-    pub fn into_projective(self) -> G2Affine {
+    pub fn into_projective(self) -> G2Projective {
+        self.0.into()
+    }
+}
+
+impl Add<&PublicKey> for PublicKey {
+    type Output = Self;
+
+    fn add(self, rhs: &PublicKey) -> Self {
+        Self((self.0 + rhs.0).into())
+    }
+}
+
+impl Add<PublicKey> for PublicKey {
+    type Output = Self;
+
+    fn add(self, rhs: PublicKey) -> Self {
+        self + &rhs
+    }
+}
+
+impl ark_std::Zero for PublicKey {
+    fn zero() -> Self {
+        Self(G2Projective::zero().into())
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0.is_zero()
+    }
+}
+
+impl core::fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let mut bytes = Vec::new();
         self.0
+            .serialize_compressed(&mut bytes)
+            .map_err(|_| core::fmt::Error::default())?;
+        write!(f, "{}", hex::encode(&bytes))
     }
 }
 
 /// A Secret Key is a scalar field element.
-#[derive(Copy, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct SecretKey(Fr);
+#[derive(Copy, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SecretKey(#[serde(with = "crate::ark")] Fr);
 
 impl core::fmt::Debug for SecretKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -71,16 +137,15 @@ impl Zeroize for SecretKey {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, displaydoc::Display)]
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
-pub enum SigningError {
-    /// Hashing to G1 failed
-    #[cfg_attr(feature = "std", error(transparent))]
-    HashingToG1(#[cfg_attr(feature = "std", from)] HashToCurveError),
+pub enum Error {
+    /// Hashing to G1 failed: {0}
+    HashingToG1(#[cfg_attr(feature = "std", from, source)] HashToCurveError),
 }
 
 #[cfg(not(feature = "std"))]
-impl From<HashToCurveError> for SigningError {
+impl From<HashToCurveError> for Error {
     fn from(e: HashToCurveError) -> Self {
         Self::HashingToG1(e)
     }
@@ -101,7 +166,7 @@ impl SecretKey {
     }
 
     /// Sign a message with the secret key and return the signature
-    pub fn sign(&self, message: &[u8]) -> Result<Signature, SigningError> {
+    pub fn sign(&self, message: &[u8]) -> Result<Signature, Error> {
         let msg_hash_g1 = crate::hash::hash_to_g1(message)?;
         let sig = msg_hash_g1 * self.0;
         Ok(Signature::from(sig))
@@ -112,7 +177,7 @@ impl SecretKey {
 ///
 /// The Secret Key is a scalar field element.
 /// The Public Key is a curve point in G2.
-#[derive(Debug, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 pub struct Keypair {
     /// Secret key
     sk: SecretKey,
@@ -142,8 +207,13 @@ impl Keypair {
         self.sk
     }
 
+    /// Get the Address of the keypair
+    pub fn address(&self) -> Result<Address, SerializationError> {
+        Address::try_from(&self.pk)
+    }
+
     /// Sign a message with the secret key and return the signature
-    pub fn sign(&self, message: &[u8]) -> Result<Signature, SigningError> {
+    pub fn sign(&self, message: &[u8]) -> Result<Signature, Error> {
         self.sk.sign(message)
     }
 }

@@ -1,15 +1,14 @@
 use ark_bls12_381::{Bls12_381, G1Affine, G1Projective, G2Affine};
 use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-
-#[cfg(not(feature = "std"))]
 use ark_std::vec::Vec;
+use serde::{Deserialize, Serialize};
 
 use crate::keys::PublicKey;
 
 /// A Signature is a curve point in G1.
-#[derive(Debug, Clone, Copy, CanonicalSerialize, CanonicalDeserialize)]
-pub struct Signature(G1Affine);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+pub struct Signature(#[serde(with = "crate::ark")] G1Affine);
 
 impl Signature {
     /// Get the Signature as an Affine point
@@ -53,5 +52,11 @@ impl From<G1Projective> for Signature {
 impl AsRef<G1Affine> for Signature {
     fn as_ref(&self) -> &G1Affine {
         &self.0
+    }
+}
+
+impl core::fmt::Display for Signature {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
