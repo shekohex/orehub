@@ -1,6 +1,8 @@
 use ark_serialize::SerializationError;
 use ark_std::vec::Vec;
-use round_based::{rounds_router::RoundsRouter, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt};
+use round_based::{
+    rounds_router::RoundsRouter, runtime::AsyncRuntime, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -103,7 +105,7 @@ where
 
     tracer.stage("Setup networking");
 
-    let MpcParty { delivery, .. } = party.into_party();
+    let MpcParty { delivery, runtime, .. } = party.into_party();
     let (incomings, mut outgoings) = delivery.split();
 
     let mut rounds = RoundsRouter::<Msg>::builder();
@@ -141,6 +143,7 @@ where
 
     let mut blames = Vec::new();
 
+    tracer.stage("Verify Partial Signatures");
     for (j, msg) in msgs.into_iter().enumerate() {
         let Some(PartialSignatureMsg { signature }) = msg else {
             // absent participant
@@ -158,6 +161,8 @@ where
             // TODO: add more information to blames
             blames.push(sender);
         }
+
+        runtime.yield_now().await;
     }
 
     if !blames.is_empty() {
@@ -188,7 +193,7 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn signing_works() {
         let n = 5;
         let t = n * 2 / 3;

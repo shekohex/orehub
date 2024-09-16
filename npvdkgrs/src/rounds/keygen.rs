@@ -1,6 +1,8 @@
 use ark_serialize::SerializationError;
 use ark_std::{collections::BTreeMap, rand, vec::Vec};
-use round_based::{rounds_router::RoundsRouter, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt};
+use round_based::{
+    rounds_router::RoundsRouter, runtime::AsyncRuntime, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt,
+};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
@@ -137,7 +139,7 @@ where
 
     tracer.stage("Setup networking");
 
-    let MpcParty { delivery, .. } = party.into_party();
+    let MpcParty { delivery, runtime, .. } = party.into_party();
     let (incomings, mut outgoings) = delivery.split();
 
     let mut rounds = RoundsRouter::<Msg>::builder();
@@ -154,7 +156,9 @@ where
         .map(|p| Result::<_, SerializationError>::Ok((Address::try_from(p)?, *p)))
         .collect::<Result<BTreeMap<_, _>, _>>()
         .map_err(Bug::Serialization)?;
+
     let shares = crate::party::generate_shares(rng, &participants_map, &private_poly).map_err(Bug::Share)?;
+    runtime.yield_now().await;
     // Zeroize the polynomial
     private_poly.coeffs.zeroize();
 
@@ -304,7 +308,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread")]
     async fn keygen_works() {
         let n = 5;
         let t = n * 2 / 3;
