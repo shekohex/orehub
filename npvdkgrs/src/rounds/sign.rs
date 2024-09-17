@@ -1,9 +1,12 @@
 use ark_serialize::SerializationError;
-use ark_std::vec::Vec;
+use ark_std::{cfg_iter, vec::Vec};
 use round_based::{
     rounds_router::RoundsRouter, runtime::AsyncRuntime, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt,
 };
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 use crate::{
     addr::Address, keys::PublicKey, party::KeysharePackage, poly::DenseGPolynomial, sig::Signature, trace::Tracer,
@@ -136,37 +139,57 @@ where
         return Err(SigningAborted::NotEnoughShares(t + 1).into());
     }
 
-    let gvk = pkg.global_verification_key();
-    let mut sig_points = Vec::with_capacity(msgs.len());
-    let mut addrs_scalars = Vec::with_capacity(msgs.len());
     let gshvk_poly = DenseGPolynomial::from_coefficients_slice(&pkg.gvk_poly);
+    let gvk = pkg.global_verification_key();
+    let sig_points = msgs
+        .iter()
+        .flatten()
+        .map(|msg| msg.signature.into_projective())
+        .collect::<Vec<_>>();
+    let addrs_scalars = msgs
+        .iter()
+        .enumerate()
+        .flat_map(|(j, msg)| {
+            msg.as_ref()
+                .and_then(|_| all_participants.get(j))
+                .map(Address::try_from)
+                .transpose()
+                .ok()
+                .flatten()
+                .as_ref()
+                .map(Address::as_scalar)
+        })
+        .collect::<Vec<_>>();
+    let gshvks = cfg_iter!(addrs_scalars)
+        .map(|addr| gshvk_poly.evaluate(addr))
+        .collect::<Vec<_>>();
 
-    let mut blames = Vec::new();
-
-    tracer.stage("Verify Partial Signatures");
-    for (j, msg) in msgs.into_iter().enumerate() {
-        let Some(PartialSignatureMsg { signature }) = msg else {
-            // absent participant
-            continue;
-        };
-        // verify the partial signature
-        let sender = all_participants.get(j).ok_or(Bug::ParticipantIndexOutOfBounds(j))?;
-        let sender_addr = Address::try_from(sender).map_err(Bug::Serialization)?;
-        let gshvk_j = gshvk_poly.evaluate(&sender_addr.as_scalar());
-        let valid = signature.verify(msg_to_be_signed, &gshvk_j.into());
-        if valid {
-            addrs_scalars.push(sender_addr.as_scalar());
-            sig_points.push(signature.into_projective());
-        } else {
-            // TODO: add more information to blames
-            blames.push(sender);
+    tracer.stage("Batch Verify Partial Signatures");
+    let is_valid = crate::sig::batch_verify(&sig_points, gshvks, msg_to_be_signed);
+    // if it is not valid, we need to do the heavy lifting by verifying each signature individually.
+    if !is_valid {
+        let mut blames = Vec::new();
+        tracer.stage("Verify Partial Signatures");
+        for (j, msg) in msgs.into_iter().enumerate() {
+            let Some(PartialSignatureMsg { signature }) = msg else {
+                // absent participant
+                continue;
+            };
+            // verify the partial signature
+            let sender = all_participants.get(j).ok_or(Bug::ParticipantIndexOutOfBounds(j))?;
+            let sender_addr = Address::try_from(sender).map_err(Bug::Serialization)?;
+            let gshvk_j = gshvk_poly.evaluate(&sender_addr.as_scalar());
+            let valid = signature.verify(msg_to_be_signed, &gshvk_j.into());
+            if !valid {
+                // TODO: add more information to blames
+                blames.push(sender);
+            }
+            runtime.yield_now().await;
         }
 
-        runtime.yield_now().await;
-    }
-
-    if !blames.is_empty() {
-        // TODO: report blames
+        if !blames.is_empty() {
+            // TODO: report blames
+        }
     }
 
     tracer.stage("Combine Partial Signatures");

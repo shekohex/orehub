@@ -1,5 +1,11 @@
-use ark_bls12_381::{Bls12_381, G1Affine, G1Projective, G2Affine};
-use ark_ec::{pairing::Pairing, AffineRepr, CurveGroup};
+use core::ops::Add;
+
+use ark_bls12_381::{Bls12_381, Config as Bls12Config, G1Affine, G1Projective, G2Affine};
+use ark_ec::{
+    bls12::{G1Prepared, G2Prepared},
+    pairing::Pairing,
+    AffineRepr, CurveGroup,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use ark_std::vec::Vec;
 use serde::{Deserialize, Serialize};
@@ -37,6 +43,30 @@ impl Signature {
     }
 }
 
+/// Batch verify a list of signatures on a message with a list of public keys.
+///
+/// This is more efficient than verifying each signature individually.
+/// However, it is not useful to tell which signature failed, it is either all or nothing.
+///
+/// To verify a single signature, use the [`Signature::verify`] method.
+pub fn batch_verify(
+    signatures: impl IntoIterator<Item = impl Into<G1Prepared<Bls12Config>>>,
+    public_keys: impl IntoIterator<Item = impl Into<G2Prepared<Bls12Config>>>,
+    message: &[u8],
+) -> bool {
+    let Ok(msg_hash_g1) = crate::hash::hash_to_g1(message) else {
+        return false;
+    };
+    let sigs = signatures.into_iter();
+    let pks = public_keys.into_iter();
+    let size_hint = sigs.size_hint().0;
+    let g2 = core::iter::repeat(G2Affine::generator()).take(size_hint);
+    let msg_hashes = core::iter::repeat(msg_hash_g1).take(size_hint);
+    let e1 = Bls12_381::multi_pairing(msg_hashes, pks);
+    let e2 = Bls12_381::multi_pairing(sigs, g2);
+    e1 == e2
+}
+
 impl From<G1Affine> for Signature {
     fn from(sig: G1Affine) -> Self {
         Self(sig)
@@ -52,6 +82,14 @@ impl From<G1Projective> for Signature {
 impl AsRef<G1Affine> for Signature {
     fn as_ref(&self) -> &G1Affine {
         &self.0
+    }
+}
+
+impl Add<Signature> for Signature {
+    type Output = Self;
+
+    fn add(self, rhs: Signature) -> Self::Output {
+        Self((self.0 + rhs.0).into())
     }
 }
 
