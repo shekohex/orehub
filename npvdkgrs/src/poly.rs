@@ -1,10 +1,6 @@
 use core::ops::{Add, Mul};
 
-use ark_bls12_381::{Fr, G2Affine};
-use ark_ec::{
-    short_weierstrass::{Projective, SWCurveConfig},
-    AffineRepr, CurveGroup,
-};
+use ark_ec::CurveGroup;
 use ark_ff::{Field, PrimeField};
 use ark_std::{end_timer, rand, start_timer, vec, vec::Vec, Zero};
 
@@ -36,43 +32,6 @@ impl<G> DenseGPolynomial<G> {
 
     pub fn into_coeffs(self) -> Vec<G> {
         self.coeffs
-    }
-}
-
-pub trait ArkZero {
-    /// Returns the zero value of the type.
-    fn zero() -> Self;
-    /// Returns true if the value is zero.
-    fn is_zero(&self) -> bool;
-}
-
-impl ArkZero for G2Affine {
-    fn zero() -> Self {
-        AffineRepr::zero()
-    }
-
-    fn is_zero(&self) -> bool {
-        AffineRepr::is_zero(self)
-    }
-}
-
-impl<P: SWCurveConfig> ArkZero for Projective<P> {
-    fn zero() -> Self {
-        Zero::zero()
-    }
-
-    fn is_zero(&self) -> bool {
-        Zero::is_zero(self)
-    }
-}
-
-impl ArkZero for Fr {
-    fn zero() -> Self {
-        Zero::zero()
-    }
-
-    fn is_zero(&self) -> bool {
-        Zero::is_zero(self)
     }
 }
 
@@ -283,7 +242,6 @@ where
     C: Mul<F, Output = O> + Copy + Default + zeroize::Zeroize,
     C: Add<C, Output = O>,
     O: Into<C>,
-    C: ArkZero,
 {
     if x.len() != y.len() {
         return Err(InterpolationError::InvalidInputLengths(x.len(), y.len()));
@@ -291,7 +249,7 @@ where
 
     let n = x.len();
     let mut s = vec![F::zero(); n];
-    let mut coeffs = vec![ArkZero::zero(); n];
+    let mut coeffs = vec![C::default(); n];
 
     // Initialize the s polynomial
     s.push(F::one());
