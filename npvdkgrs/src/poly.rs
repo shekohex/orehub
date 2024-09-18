@@ -2,7 +2,10 @@ use core::ops::{Add, Mul};
 
 use ark_ec::CurveGroup;
 use ark_ff::{Field, PrimeField};
-use ark_std::{end_timer, rand, start_timer, vec, vec::Vec, Zero};
+use ark_std::{end_timer, rand, start_timer, vec::Vec, Zero};
+
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 
 /// A polynomial with coefficients of Group elements.
 #[derive(Clone, PartialEq, Eq)]
@@ -100,7 +103,6 @@ impl<G: CurveGroup> DenseGPolynomial<G> {
     #[cfg(feature = "parallel")]
     pub fn evaluate(&self, point: &G::ScalarField) -> G {
         use ark_ff::Field;
-        use rayon::prelude::*;
 
         if self.is_zero() {
             return G::zero();
@@ -304,6 +306,7 @@ fn compute_phi_inv<F: Field>(x_i: F, s: &[F]) -> Result<F, InterpolationError> {
     phi.inverse().ok_or(InterpolationError::TriedToInvertZero)
 }
 
+/// Compute the Lagrange basis polynomial: φ_i(X) = Π(X - x_j) / (x_i - x_j)
 /// Update the coefficients of the interpolation polynomial using the Lagrange basis polynomial.
 fn update_coeffs<C, O, F: Field>(coeffs: &mut [C], y_i: &C, x_i: &F, s: &[F], b: &mut F, ff: F)
 where

@@ -3,7 +3,7 @@ use core::ops::Add;
 use ark_bls12_381::{Fr, G2Affine, G2Projective};
 use ark_ec::{hashing::HashToCurveError, AffineRepr, CurveGroup};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
-use ark_std::{rand, vec::Vec, UniformRand};
+use ark_std::{rand, vec::Vec, UniformRand, Zero};
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
@@ -170,6 +170,11 @@ impl SecretKey {
         let msg_hash_g1 = crate::hash::hash_to_g1(message)?;
         let sig = msg_hash_g1 * self.0;
         Ok(Signature::from(sig))
+    }
+
+    /// Is the current secret key is zero.
+    pub fn is_zero(&self) -> bool {
+        self.0.is_zero()
     }
 }
 

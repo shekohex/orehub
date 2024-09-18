@@ -30,6 +30,10 @@ pub struct KeysharePackage {
 }
 
 impl KeysharePackage {
+    /// Is our share zero?
+    pub fn is_zero(&self) -> bool {
+        self.share_keypair.sk().is_zero()
+    }
     /// Sign a message with our local keyshare.
     pub fn partial_sign(&self, message: &[u8]) -> Result<Signature, Error> {
         self.share_keypair.sign(message)

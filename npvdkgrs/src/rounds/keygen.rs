@@ -22,14 +22,15 @@ use super::{store::ThresholdRoundInput, IoError};
 #[derive(Clone, Debug, PartialEq, ProtocolMessage, Serialize, Deserialize)]
 pub enum Msg {
     /// Round 1
-    PublishShares(PublishSharesMsg),
+    PublishShares(MaybePublicSharesMsg),
 }
 
-/// Public shares message
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub struct PublishSharesMsg {
-    /// Public Shares to all parties
-    pub shares: Vec<PublicShare>,
+pub enum MaybePublicSharesMsg {
+    /// Has Shares to share with other parties
+    HasShares(Vec<PublicShare>),
+    /// I'm a new participant and I do not has any shares.
+    NewParticipant,
 }
 
 /// Keygen protocol error
@@ -81,6 +82,8 @@ pub enum KeygenAborted {
     /// Invalid share was provided. This could be a malicious attempt to provide an invalid share.
     // TODO: blames
     InvalidShare(u16),
+    /// Global Public Key has been changed after doing the refresh.
+    GlobalVerificationKeyChanged,
 }
 
 #[derive(Debug, displaydoc::Display)]
@@ -114,10 +117,44 @@ pub enum Bug {
     Interpolation(#[cfg_attr(feature = "std", source)] crate::poly::InterpolationError),
 }
 
+/// Run Non Interactive Keygen Protocol
 pub async fn run<R, M>(
+    rng: &mut R,
+    tracer: Option<&mut dyn Tracer>,
+    keypair: &Keypair,
+    participants: &[PublicKey],
+    t: u16,
+    party: M,
+) -> Result<KeysharePackage, Error>
+where
+    R: rand::RngCore + rand::CryptoRng,
+    M: Mpc<ProtocolMessage = Msg>,
+{
+    _run(rng, tracer, keypair, None, participants, t, party).await
+}
+
+/// Run Non Interactive Keygen Protocol with old package (aka refresh)
+pub(crate) async fn run_with_old_package<R, M>(
+    rng: &mut R,
+    tracer: Option<&mut dyn Tracer>,
+    keypair: &Keypair,
+    old_package: &KeysharePackage,
+    participants: &[PublicKey],
+    t: u16,
+    party: M,
+) -> Result<KeysharePackage, Error>
+where
+    R: rand::RngCore + rand::CryptoRng,
+    M: Mpc<ProtocolMessage = Msg>,
+{
+    _run(rng, tracer, keypair, Some(old_package), participants, t, party).await
+}
+
+async fn _run<R, M>(
     rng: &mut R,
     mut tracer: Option<&mut dyn Tracer>,
     keypair: &Keypair,
+    old_package: Option<&KeysharePackage>,
     participants: &[PublicKey],
     t: u16,
     party: M,
@@ -143,28 +180,39 @@ where
     let (incomings, mut outgoings) = delivery.split();
 
     let mut rounds = RoundsRouter::<Msg>::builder();
-    let round1 = rounds.add_round(ThresholdRoundInput::<PublishSharesMsg>::broadcast(i, n, n));
+    let round1 = rounds.add_round(ThresholdRoundInput::<MaybePublicSharesMsg>::broadcast(i, n, n));
     let mut rounds = rounds.listen(incomings);
     // Round 1
     tracer.round_begins();
-    tracer.stage("Generate Own shares");
-    let old_secret = None;
-    let mut private_poly = crate::party::random_polynomial(rng, t, old_secret);
-
     let participants_map = participants
         .iter()
         .map(|p| Result::<_, SerializationError>::Ok((Address::try_from(p)?, *p)))
         .collect::<Result<BTreeMap<_, _>, _>>()
         .map_err(Bug::Serialization)?;
+    // We do not need to generate our own shares if we are refreshing and we are a new participant.
+    let is_new_participant = old_package.map(|pkg| pkg.is_zero()).unwrap_or(false);
+    let msg = if is_new_participant {
+        MaybePublicSharesMsg::NewParticipant
+    } else {
+        tracer.stage("Generate Own shares");
+        let old_secret = old_package.map(|pkg| pkg.share_keypair.sk().expose_secret());
+        let mut private_poly = crate::party::random_polynomial(rng, t, old_secret);
 
-    let shares = crate::party::generate_shares(rng, &participants_map, &private_poly).map_err(Bug::Share)?;
-    runtime.yield_now().await;
-    // Zeroize the polynomial
-    private_poly.coeffs.zeroize();
+        let shares = crate::party::generate_shares(rng, &participants_map, &private_poly).map_err(Bug::Share)?;
+        runtime.yield_now().await;
+        // Zeroize the polynomial
+        private_poly.coeffs.zeroize();
+        MaybePublicSharesMsg::HasShares(shares)
+    };
 
-    tracer.stage("Broadcast shares");
+    if old_package.is_some() && !is_new_participant {
+        tracer.stage("Broadcast new shares");
+    } else if is_new_participant {
+        tracer.stage("Broadcast No shares");
+    } else {
+        tracer.stage("Broadcast shares");
+    }
     tracer.send_msg();
-    let msg = PublishSharesMsg { shares };
     outgoings
         .send(Outgoing::broadcast(Msg::PublishShares(msg.clone())))
         .await
@@ -185,7 +233,7 @@ where
 
     let mut shares_map = SharesMap::new(participants.len());
     for (j, msg) in msgs.into_iter().enumerate() {
-        let Some(PublishSharesMsg { shares }) = msg else {
+        let Some(MaybePublicSharesMsg::HasShares(shares)) = msg else {
             continue;
         };
         let sender = participants.get(j).ok_or(Bug::ParticipantIndexOutOfBounds(j))?;
@@ -212,8 +260,16 @@ where
     let result = shares_map.clone().recover_keys(&self_address, keypair.sk(), &participants_map);
     match result {
         Ok((gvk_poly, share_keypair)) => {
+            let pkg = KeysharePackage { n, t, i, share_keypair, gvk_poly };
+            if let Some(old_pkg) = old_package {
+                let old_gvk = old_pkg.global_verification_key();
+                let new_gvk = pkg.global_verification_key();
+                if old_gvk != new_gvk {
+                    return Err(KeygenAborted::GlobalVerificationKeyChanged.into());
+                }
+            }
             tracer.protocol_ends();
-            Ok(KeysharePackage { n, t, i, share_keypair, gvk_poly })
+            Ok(pkg)
         },
         Err(SharesError::InvalidShareVectorLength(_)) => Err(KeygenAborted::FewerThanNShares(n).into()),
         Err(SharesError::InvalidShares(who)) => {

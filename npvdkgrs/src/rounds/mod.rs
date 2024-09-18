@@ -6,6 +6,8 @@ use round_based::rounds_router::{errors as router_error, CompleteRoundError};
 
 /// Non-interactive publicly verifiable distributed key generation protocol.
 pub mod keygen;
+/// Non-interactive publicly verifiable Distributed Key Refresh protocol.
+pub mod refresh;
 /// Non-interactive publicly verifiable Threshold Signature protocol.
 pub mod sign;
 
