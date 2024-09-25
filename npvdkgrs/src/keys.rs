@@ -10,7 +10,7 @@ use zeroize::Zeroize;
 use crate::{addr::Address, sig::Signature};
 
 /// A Public Key is a curve point in G2.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
+#[derive(Copy, Clone, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct PublicKey(#[serde(with = "crate::ark")] G2Affine);
 
@@ -100,11 +100,21 @@ impl ark_std::Zero for PublicKey {
 
 impl core::fmt::Display for PublicKey {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let encoded = format!("{:?}", self);
+        let first = &encoded[..5];
+        let last = &encoded[encoded.len() - 5..];
+        write!(f, "{}…{}", first, last)
+    }
+}
+
+impl core::fmt::Debug for PublicKey {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         let mut bytes = Vec::new();
         self.0
             .serialize_compressed(&mut bytes)
             .map_err(|_| core::fmt::Error::default())?;
-        write!(f, "{}", hex::encode(&bytes))
+        let encoded = bs58::encode(&bytes).into_string();
+        write!(f, "{}", encoded)
     }
 }
 
@@ -203,21 +213,25 @@ impl Keypair {
     }
 
     /// Get the Public key of the keypair
+    #[inline]
     pub fn pk(&self) -> PublicKey {
         self.pk
     }
 
     /// Get the Secret key of the keypair
+    #[inline]
     pub fn sk(&self) -> SecretKey {
         self.sk
     }
 
     /// Get the Address of the keypair
+    #[inline]
     pub fn address(&self) -> Result<Address, SerializationError> {
         Address::try_from(&self.pk)
     }
 
     /// Sign a message with the secret key and return the signature
+    #[inline]
     pub fn sign(&self, message: &[u8]) -> Result<Signature, Error> {
         self.sk.sign(message)
     }

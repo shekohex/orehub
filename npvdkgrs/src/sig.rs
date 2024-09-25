@@ -49,19 +49,37 @@ impl Signature {
 /// However, it is not useful to tell which signature failed, it is either all or nothing.
 ///
 /// To verify a single signature, use the [`Signature::verify`] method.
-pub fn batch_verify(
+/// To verify a batch of signatures against a list of public keys, and a list of messages, use the [`batch_verify`] function.
+pub fn batch_verify_msg(
     signatures: impl IntoIterator<Item = impl Into<G1Prepared<Bls12Config>>>,
     public_keys: impl IntoIterator<Item = impl Into<G2Prepared<Bls12Config>>>,
     message: &[u8],
 ) -> bool {
-    let Ok(msg_hash_g1) = crate::hash::hash_to_g1(message) else {
-        return false;
-    };
+    let msgs_iter = std::iter::repeat(message);
+    batch_verify(signatures, public_keys, msgs_iter)
+}
+
+/// Batch verify a list of signatures on a set of messages with a list of public keys.
+///
+/// This is more efficient than verifying each signature individually.
+/// However, it is not useful to tell which signature failed, it is either all or nothing.
+///
+/// To verify a single signature, use the [`Signature::verify`] method.
+/// To verify a batch of signatures against a list of public keys, and one msg, use the [`batch_verify_msg`] function.
+pub fn batch_verify(
+    signatures: impl IntoIterator<Item = impl Into<G1Prepared<Bls12Config>>>,
+    public_keys: impl IntoIterator<Item = impl Into<G2Prepared<Bls12Config>>>,
+    messages: impl IntoIterator<Item = impl AsRef<[u8]>>,
+) -> bool {
     let sigs = signatures.into_iter();
     let pks = public_keys.into_iter();
     let size_hint = sigs.size_hint().0;
-    let g2 = core::iter::repeat(G2Affine::generator()).take(size_hint);
-    let msg_hashes = core::iter::repeat(msg_hash_g1).take(size_hint);
+    let g2 = core::iter::repeat(G2Affine::generator()).take(size_hint).fuse();
+    let msg_hashes = messages
+        .into_iter()
+        .take(size_hint)
+        .flat_map(|msg| crate::hash::hash_to_g1(msg.as_ref()))
+        .fuse();
     let e1 = Bls12_381::multi_pairing(msg_hashes, pks);
     let e2 = Bls12_381::multi_pairing(sigs, g2);
     e1 == e2
@@ -95,6 +113,10 @@ impl Add<Signature> for Signature {
 
 impl core::fmt::Display for Signature {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", self.0)
+        let mut bytes = Vec::new();
+        self.0
+            .serialize_compressed(&mut bytes)
+            .map_err(|_| core::fmt::Error::default())?;
+        write!(f, "{}", bs58::encode(bytes).into_string())
     }
 }

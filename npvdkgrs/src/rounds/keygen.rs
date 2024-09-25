@@ -1,4 +1,4 @@
-use ark_serialize::SerializationError;
+use ark_serialize::{CanonicalSerialize, SerializationError};
 use ark_std::{collections::BTreeMap, rand, vec::Vec};
 use round_based::{
     rounds_router::RoundsRouter, runtime::AsyncRuntime, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt,
@@ -13,6 +13,7 @@ use crate::{
     params::Parameters,
     party::KeysharePackage,
     share::PublicShare,
+    sig::Signature,
     trace::Tracer,
 };
 
@@ -22,15 +23,19 @@ use super::{store::ThresholdRoundInput, IoError};
 #[derive(Clone, Debug, PartialEq, ProtocolMessage, Serialize, Deserialize)]
 pub enum Msg {
     /// Round 1
-    PublishShares(MaybePublicSharesMsg),
+    PublishShares(PublicSharesMsg),
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-pub enum MaybePublicSharesMsg {
-    /// Has Shares to share with other parties
-    HasShares(Vec<PublicShare>),
-    /// I'm a new participant and I do not has any shares.
-    NewParticipant,
+pub struct PublicSharesMsg {
+    /// Shares to other parties
+    pub shares: Vec<PublicShare>,
+    /// Sender's public key
+    pub sender: PublicKey,
+    /// Signature of us to prove that we are the owner of the shares.
+    /// This is a signature of all of the above.
+    /// sig = sign(shares, sender)
+    pub signature: Signature,
 }
 
 /// Keygen protocol error
@@ -82,8 +87,6 @@ pub enum KeygenAborted {
     /// Invalid share was provided. This could be a malicious attempt to provide an invalid share.
     // TODO: blames
     InvalidShare(u16),
-    /// Global Public Key has been changed after doing the refresh.
-    GlobalVerificationKeyChanged,
 }
 
 #[derive(Debug, displaydoc::Display)]
@@ -120,41 +123,8 @@ pub enum Bug {
 /// Run Non Interactive Keygen Protocol
 pub async fn run<R, M>(
     rng: &mut R,
-    tracer: Option<&mut dyn Tracer>,
-    keypair: &Keypair,
-    participants: &[PublicKey],
-    t: u16,
-    party: M,
-) -> Result<KeysharePackage, Error>
-where
-    R: rand::RngCore + rand::CryptoRng,
-    M: Mpc<ProtocolMessage = Msg>,
-{
-    _run(rng, tracer, keypair, None, participants, t, party).await
-}
-
-/// Run Non Interactive Keygen Protocol with old package (aka refresh)
-pub(crate) async fn run_with_old_package<R, M>(
-    rng: &mut R,
-    tracer: Option<&mut dyn Tracer>,
-    keypair: &Keypair,
-    old_package: &KeysharePackage,
-    participants: &[PublicKey],
-    t: u16,
-    party: M,
-) -> Result<KeysharePackage, Error>
-where
-    R: rand::RngCore + rand::CryptoRng,
-    M: Mpc<ProtocolMessage = Msg>,
-{
-    _run(rng, tracer, keypair, Some(old_package), participants, t, party).await
-}
-
-async fn _run<R, M>(
-    rng: &mut R,
     mut tracer: Option<&mut dyn Tracer>,
     keypair: &Keypair,
-    old_package: Option<&KeysharePackage>,
     participants: &[PublicKey],
     t: u16,
     party: M,
@@ -180,7 +150,7 @@ where
     let (incomings, mut outgoings) = delivery.split();
 
     let mut rounds = RoundsRouter::<Msg>::builder();
-    let round1 = rounds.add_round(ThresholdRoundInput::<MaybePublicSharesMsg>::broadcast(i, n, n));
+    let round1 = rounds.add_round(ThresholdRoundInput::<PublicSharesMsg>::broadcast(i, n, n));
     let mut rounds = rounds.listen(incomings);
     // Round 1
     tracer.round_begins();
@@ -189,54 +159,70 @@ where
         .map(|p| Result::<_, SerializationError>::Ok((Address::try_from(p)?, *p)))
         .collect::<Result<BTreeMap<_, _>, _>>()
         .map_err(Bug::Serialization)?;
-    // We do not need to generate our own shares if we are refreshing and we are a new participant.
-    let is_new_participant = old_package.map(|pkg| pkg.is_zero()).unwrap_or(false);
-    let msg = if is_new_participant {
-        MaybePublicSharesMsg::NewParticipant
-    } else {
-        tracer.stage("Generate Own shares");
-        let old_secret = old_package.map(|pkg| pkg.share_keypair.sk().expose_secret());
-        let mut private_poly = crate::party::random_polynomial(rng, t, old_secret);
+    tracer.stage("Generate Own shares");
+    let old_secret = None;
+    let mut private_poly = crate::party::random_polynomial(rng, t, old_secret);
 
-        let shares = crate::party::generate_shares(rng, &participants_map, &private_poly).map_err(Bug::Share)?;
-        runtime.yield_now().await;
-        // Zeroize the polynomial
-        private_poly.coeffs.zeroize();
-        MaybePublicSharesMsg::HasShares(shares)
-    };
+    let shares = crate::party::generate_shares(rng, &participants_map, &private_poly).map_err(Bug::Share)?;
+    runtime.yield_now().await;
+    // Zeroize the polynomial
+    private_poly.coeffs.zeroize();
 
-    if old_package.is_some() && !is_new_participant {
-        tracer.stage("Broadcast new shares");
-    } else if is_new_participant {
-        tracer.stage("Broadcast No shares");
-    } else {
-        tracer.stage("Broadcast shares");
-    }
+    tracer.stage("Sign shares");
+    let mut msg_to_sign = Vec::new();
+    keypair
+        .pk()
+        .serialize_compressed(&mut msg_to_sign)
+        .map_err(Bug::Serialization)?;
+    shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
+    let signature = keypair.sign(&msg_to_sign).map_err(Bug::Signing)?;
+
+    let msg = PublicSharesMsg { shares, sender: keypair.pk(), signature };
+    tracer.stage("Broadcast shares");
     tracer.send_msg();
     outgoings
         .send(Outgoing::broadcast(Msg::PublishShares(msg.clone())))
         .await
         .map_err(|e| IoError::send_message(e))?;
-
     tracer.msg_sent();
 
     tracer.receive_msgs();
     let other_shares = rounds.complete(round1).await.map_err(IoError::receive_message)?;
     tracer.msgs_received();
 
+    tracer.stage("Verify Shares Signatures");
+    let signatures = other_shares
+        .iter()
+        .flat_map(|msg| msg.as_ref().map(|msg| msg.signature.into_projective()))
+        .collect::<Vec<_>>();
+    let public_keys = other_shares
+        .iter()
+        .flat_map(|msg| msg.as_ref().map(|msg| msg.sender.into_projective()))
+        .collect::<Vec<_>>();
+    let messages = other_shares
+        .iter()
+        .flat_map(|msg| {
+            msg.as_ref().map(|msg| {
+                let mut msg_to_sign = Vec::new();
+                msg.sender.serialize_compressed(&mut msg_to_sign).unwrap();
+                msg.shares.serialize_compressed(&mut msg_to_sign).unwrap();
+                msg_to_sign
+            })
+        })
+        .collect::<Vec<_>>();
+    let is_valid = crate::sig::batch_verify(&signatures, &public_keys, &messages);
+    if !is_valid {
+        // TODO: do the heavy lifting of finding the invalid signature, and then blame them.
+    }
+
     tracer.stage("Collect shares");
     let msgs = other_shares.into_vec_including_me(msg);
-    // Expects at least t+1 shares to be collected
-    if msgs.len() < usize::from(t + 1) {
-        return Err(KeygenAborted::NotEnoughShares(t + 1).into());
-    }
 
     let mut shares_map = SharesMap::new(participants.len());
     for (j, msg) in msgs.into_iter().enumerate() {
-        let Some(MaybePublicSharesMsg::HasShares(shares)) = msg else {
+        let Some(PublicSharesMsg { shares, sender, .. }) = msg else {
             continue;
         };
-        let sender = participants.get(j).ok_or(Bug::ParticipantIndexOutOfBounds(j))?;
         let sender_addr = Address::try_from(sender).map_err(Bug::Serialization)?;
         if shares.len() != participants.len() {
             return Err(KeygenAborted::FewerThanNShares(n).into());
@@ -261,13 +247,6 @@ where
     match result {
         Ok((gvk_poly, share_keypair)) => {
             let pkg = KeysharePackage { n, t, i, share_keypair, gvk_poly };
-            if let Some(old_pkg) = old_package {
-                let old_gvk = old_pkg.global_verification_key();
-                let new_gvk = pkg.global_verification_key();
-                if old_gvk != new_gvk {
-                    return Err(KeygenAborted::GlobalVerificationKeyChanged.into());
-                }
-            }
             tracer.protocol_ends();
             Ok(pkg)
         },

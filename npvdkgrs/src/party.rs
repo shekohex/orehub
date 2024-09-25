@@ -3,7 +3,7 @@ use ark_bls12_381::{Fr, G2Affine};
 use ark_ec::AffineRepr;
 use ark_poly::{univariate::DensePolynomial, DenseUVPolynomial, Polynomial};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use ark_std::{collections::BTreeMap, rand, vec::Vec, UniformRand};
+use ark_std::{collections::BTreeMap, rand, vec::Vec, UniformRand, Zero};
 use serde::{Deserialize, Serialize};
 
 use crate::addr::Address;
@@ -30,10 +30,24 @@ pub struct KeysharePackage {
 }
 
 impl KeysharePackage {
+    /// Create a new empty keyshare package.
+    pub fn new_zero(t: u16, n: u16, i: u16, gvk: PublicKey) -> Self {
+        let share_keypair = Keypair::from_sk(Fr::zero().into());
+        let mut gvk_poly = vec![G2Projective::zero(); t as usize];
+        gvk_poly[0] = gvk.into();
+        Self { n, t, i, share_keypair, gvk_poly }
+    }
+
     /// Is our share zero?
     pub fn is_zero(&self) -> bool {
         self.share_keypair.sk().is_zero()
     }
+
+    /// Is our share non-zero?
+    pub fn is_non_zero(&self) -> bool {
+        !self.is_zero()
+    }
+
     /// Sign a message with our local keyshare.
     pub fn partial_sign(&self, message: &[u8]) -> Result<Signature, Error> {
         self.share_keypair.sign(message)
@@ -57,7 +71,7 @@ impl KeysharePackage {
     }
 }
 
-/// Generates a random polynomial of degree `threshold - 1`.
+/// Generates a random polynomial of degree `t`.
 ///
 /// in case of resharing, you can pass the old secret as an argument.
 pub fn random_polynomial<R: rand::Rng + rand::CryptoRng>(
@@ -70,6 +84,7 @@ pub fn random_polynomial<R: rand::Rng + rand::CryptoRng>(
     if let Some(s) = old_secret {
         private_coeffs[0] = s;
     }
+    assert_eq!(private_coeffs.len(), t as usize);
     DensePolynomial::from_coefficients_vec(private_coeffs)
 }
 

@@ -31,18 +31,18 @@ pub struct PartialSignatureMsg {
 /// Signing protocol error
 #[derive(Debug, displaydoc::Display)]
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
-#[displaydoc("signing protocol is failed to complete")]
+#[displaydoc("signing protocol is failed to complete due to: {0}")]
 pub struct Error(#[cfg_attr(feature = "std", source)] Reason);
 
 /// signing protocol abort reason
 #[derive(Debug, displaydoc::Display)]
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
 pub enum Reason {
-    /// Protocol was maliciously aborted by another party
+    /// Protocol was maliciously aborted by another party: {0}
     Aborted(#[cfg_attr(feature = "std", source)] SigningAborted),
-    /// IO error
+    /// IO error: {0}
     IoError(#[cfg_attr(feature = "std", source)] super::IoError),
-    /// Bug occurred
+    /// Bug occurred: {0}
     Bug(Bug),
 }
 
@@ -165,9 +165,9 @@ where
         .collect::<Vec<_>>();
 
     tracer.stage("Batch Verify Partial Signatures");
-    let is_valid = crate::sig::batch_verify(&sig_points, gshvks, msg_to_be_signed);
+    let valid = crate::sig::batch_verify_msg(&sig_points, gshvks, msg_to_be_signed);
     // if it is not valid, we need to do the heavy lifting by verifying each signature individually.
-    if !is_valid {
+    if !valid {
         let mut blames = Vec::new();
         tracer.stage("Verify Partial Signatures");
         for (j, msg) in msgs.into_iter().enumerate() {
@@ -217,7 +217,7 @@ mod tests {
     use super::*;
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn signing_works() {
+    async fn it_works() {
         let n = 5;
         let t = n * 2 / 3;
         eprintln!("Running {t}-out-of-{n} Keygen");
@@ -285,6 +285,8 @@ mod tests {
         for task in tasks {
             sig_outputs.push(task.await.unwrap());
         }
+
+        assert!(sig_outputs.len() >= usize::from(t), "Not enough signatures");
 
         // Verify the signature
         for sig in sig_outputs.iter() {

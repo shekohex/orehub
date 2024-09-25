@@ -56,7 +56,7 @@ impl From<[u8; 32]> for Address {
 
 impl core::fmt::Display for Address {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "{}", hex::encode(self.0))
+        write!(f, "{}", bs58::encode(self.0).into_string())
     }
 }
 
