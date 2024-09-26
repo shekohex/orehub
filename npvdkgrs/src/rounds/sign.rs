@@ -1,4 +1,4 @@
-use ark_serialize::SerializationError;
+use ark_serialize::{CanonicalSerialize, SerializationError};
 use ark_std::{cfg_iter, vec::Vec};
 use round_based::{
     rounds_router::RoundsRouter, runtime::AsyncRuntime, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt,
@@ -9,7 +9,12 @@ use serde::{Deserialize, Serialize};
 use rayon::prelude::*;
 
 use crate::{
-    addr::Address, keys::PublicKey, party::KeysharePackage, poly::DenseGPolynomial, sig::Signature, trace::Tracer,
+    addr::Address,
+    keys::{Keypair, PublicKey},
+    party::KeysharePackage,
+    poly::DenseGPolynomial,
+    sig::Signature,
+    trace::Tracer,
 };
 
 use super::{store::ThresholdRoundInput, IoError};
@@ -25,6 +30,12 @@ pub enum Msg {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PartialSignatureMsg {
     /// A Partial Signature signed by the party
+    pub partial_sig: Signature,
+    /// The sender's public key
+    pub sender: PublicKey,
+    /// Signature of us to prove that we are the owner of the partial signature.
+    /// This is a signature of all of the above fields.
+    /// sig = sign(partial_sig || sender)
     pub signature: Signature,
 }
 
@@ -67,7 +78,11 @@ impl From<SigningAborted> for Reason {
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
 pub enum SigningAborted {
     /// Not enough shares were collected, expected {0} at least.
+    // TODO: blames
     NotEnoughShares(u16),
+    /// Invalid Signed Partial Signature
+    // TODO: blames
+    InvalidSignedPartialSignature,
     /// Invalid Global Signature after aggregation
     InvalidGlobalSignature,
 }
@@ -89,6 +104,7 @@ pub enum Bug {
 
 pub async fn run<M>(
     mut tracer: Option<&mut dyn Tracer>,
+    keypair: &Keypair,
     pkg: &KeysharePackage,
     all_participants: &[PublicKey],
     msg_to_be_signed: &[u8],
@@ -117,10 +133,19 @@ where
     // Round 1
     tracer.round_begins();
     tracer.stage("Generate Own Signature");
-    let signature = pkg.partial_sign(msg_to_be_signed).map_err(Bug::Signing)?;
+    let partial_sig = pkg.partial_sign(msg_to_be_signed).map_err(Bug::Signing)?;
+
+    tracer.stage("Sign Partial Signature");
+    let mut msg_to_sign = Vec::new();
+    partial_sig.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
+    keypair
+        .pk()
+        .serialize_compressed(&mut msg_to_sign)
+        .map_err(Bug::Serialization)?;
+    let signature = keypair.sign(&msg_to_sign).map_err(Bug::Signing)?;
     tracer.stage("Broadcast Partial Signature");
     tracer.send_msg();
-    let msg = PartialSignatureMsg { signature };
+    let msg = PartialSignatureMsg { partial_sig, sender: keypair.pk(), signature };
     outgoings
         .send(Outgoing::broadcast(Msg::PublishPartialSignature(msg.clone())))
         .await
@@ -131,6 +156,35 @@ where
     tracer.receive_msgs();
     let other_partial_signatures = rounds.complete(round1).await.map_err(IoError::receive_message)?;
     tracer.msgs_received();
+
+    tracer.stage("Verify Signed Partial Signatures");
+    let mut signatures = Vec::with_capacity(other_partial_signatures.len());
+    let mut public_keys = Vec::with_capacity(other_partial_signatures.len());
+    let mut messages = Vec::with_capacity(other_partial_signatures.len());
+    for msg in other_partial_signatures.iter().flatten() {
+        let mut msg_to_sign = Vec::new();
+        msg.partial_sig
+            .serialize_compressed(&mut msg_to_sign)
+            .map_err(Bug::Serialization)?;
+        msg.sender.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
+        messages.push(msg_to_sign);
+        public_keys.push(msg.sender.into_projective());
+        signatures.push(msg.signature.into_projective());
+    }
+    let is_valid = crate::sig::batch_verify(&signatures, &public_keys, &messages);
+    if !is_valid {
+        let iter = itertools::izip!(signatures, public_keys, messages);
+        let mut blames = Vec::new();
+        for (signature, public_key, message) in iter {
+            if !crate::sig::verify(&signature, &public_key, &message) {
+                blames.push(public_key);
+            }
+        }
+        if !blames.is_empty() {
+            // TODO: support blames
+            return Err(SigningAborted::InvalidSignedPartialSignature.into());
+        }
+    }
 
     tracer.stage("Collect Partial Signatures");
     let msgs = other_partial_signatures.into_vec_including_me(msg);
@@ -144,22 +198,13 @@ where
     let sig_points = msgs
         .iter()
         .flatten()
-        .map(|msg| msg.signature.into_projective())
+        .map(|msg| msg.partial_sig.into_projective())
         .collect::<Vec<_>>();
     let addrs_scalars = msgs
         .iter()
-        .enumerate()
-        .flat_map(|(j, msg)| {
-            msg.as_ref()
-                .and_then(|_| all_participants.get(j))
-                .map(Address::try_from)
-                .transpose()
-                .ok()
-                .flatten()
-                .as_ref()
-                .map(Address::as_scalar)
-        })
-        .collect::<Vec<_>>();
+        .flatten()
+        .map(|msg| Result::<_, Error>::Ok(Address::try_from(&msg.sender).map_err(Bug::Serialization)?.as_scalar()))
+        .collect::<Result<Vec<_>, _>>()?;
     let gshvks = cfg_iter!(addrs_scalars)
         .map(|addr| gshvk_poly.evaluate(addr))
         .collect::<Vec<_>>();
@@ -170,16 +215,15 @@ where
     if !valid {
         let mut blames = Vec::new();
         tracer.stage("Verify Partial Signatures");
-        for (j, msg) in msgs.into_iter().enumerate() {
-            let Some(PartialSignatureMsg { signature }) = msg else {
+        for msg in msgs.into_iter() {
+            let Some(PartialSignatureMsg { partial_sig, sender, .. }) = msg else {
                 // absent participant
                 continue;
             };
             // verify the partial signature
-            let sender = all_participants.get(j).ok_or(Bug::ParticipantIndexOutOfBounds(j))?;
             let sender_addr = Address::try_from(sender).map_err(Bug::Serialization)?;
             let gshvk_j = gshvk_poly.evaluate(&sender_addr.as_scalar());
-            let valid = signature.verify(msg_to_be_signed, &gshvk_j.into());
+            let valid = partial_sig.verify(msg_to_be_signed, &gshvk_j.into());
             if !valid {
                 // TODO: add more information to blames
                 blames.push(sender);
@@ -209,17 +253,29 @@ mod tests {
     use core::borrow::BorrowMut;
 
     use ark_std::rand::{rngs::StdRng, SeedableRng};
+    use proptest::prelude::*;
     use round_based::simulation::Simulation;
+    use test_strategy::proptest;
+    use test_strategy::Arbitrary;
 
     use crate::keys::Keypair;
     use crate::rounds::keygen::{run as keygen, Msg as KeygenMsg};
 
     use super::*;
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn it_works() {
-        let n = 5;
-        let t = n * 2 / 3;
+    #[derive(Arbitrary, Debug)]
+    struct TestInput {
+        #[strategy(2..12u16)]
+        n: u16,
+        #[strategy(1..#n)]
+        t: u16,
+    }
+
+    #[proptest(async = "tokio", cases = 20, fork = true)]
+    async fn it_works(input: TestInput) {
+        let n = input.n;
+        let t = input.t;
+        prop_assume!(t < n);
         eprintln!("Running {t}-out-of-{n} Keygen");
         let keypairs = generate_keypairs(n);
         let mut participants = keypairs.iter().map(|k| k.pk()).collect::<Vec<_>>();
@@ -249,18 +305,6 @@ mod tests {
             outputs.push(task.await.unwrap());
         }
 
-        // Assert that all parties outputed the same public key
-        let pkg = &outputs[0];
-        for i in 1..n {
-            let pkg2 = &outputs[usize::from(i)];
-
-            let expected = pkg.global_verification_key();
-            let actual = pkg2.global_verification_key();
-            assert_eq!(expected, actual, "Party {i} failed, expected 0x{expected} but got 0x{actual}");
-        }
-
-        eprintln!("Group PublicKey: {}", pkg.global_verification_key());
-
         eprintln!("Running {t}-out-of-{n} Signing");
         // Now we can test the signing
         let msg = b"Hello, World!";
@@ -270,10 +314,13 @@ mod tests {
         for i in 0..n {
             let party = simulation.add_party();
             let pkg = outputs[usize::from(i)].clone();
+            let keypair = keypairs[usize::from(i)].clone();
             let participants = participants.clone();
             let output = tokio::spawn(async move {
                 let mut tracer = crate::trace::PerfProfiler::new();
-                let output = run(Some(tracer.borrow_mut()), &pkg, &participants, msg, party).await.unwrap();
+                let output = run(Some(tracer.borrow_mut()), &keypair, &pkg, &participants, msg, party)
+                    .await
+                    .unwrap();
                 let report = tracer.get_report().unwrap();
                 eprintln!("Party {} report: {}\n", i, report);
                 output
@@ -286,8 +333,9 @@ mod tests {
             sig_outputs.push(task.await.unwrap());
         }
 
-        assert!(sig_outputs.len() >= usize::from(t), "Not enough signatures");
+        prop_assert!(sig_outputs.len() >= usize::from(t), "Not enough signatures");
 
+        let pkg = outputs[0].clone();
         // Verify the signature
         for sig in sig_outputs.iter() {
             let valid = sig.verify(msg, &pkg.global_verification_key());

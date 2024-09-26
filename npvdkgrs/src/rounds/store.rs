@@ -155,6 +155,10 @@ impl<M> RoundMsgs<M> {
     pub fn ids(&self) -> &[MsgId] {
         &self.ids
     }
+
+    pub fn len(&self) -> usize {
+        self.messages.len()
+    }
 }
 
 /// Error explaining why `RoundInput` wasn't able to process a message

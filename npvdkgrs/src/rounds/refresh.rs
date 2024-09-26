@@ -1,5 +1,6 @@
 use ark_serialize::{CanonicalSerialize, SerializationError};
 use ark_std::{collections::BTreeMap, rand, vec::Vec};
+use itertools::Itertools;
 use round_based::{
     rounds_router::RoundsRouter, runtime::AsyncRuntime, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt,
 };
@@ -36,7 +37,7 @@ pub struct ReshareMsg {
     pub sender: PublicKey,
     /// Signature of us to prove that we are the owner of the shares.
     /// This is a signature of all of the above.
-    /// sig = sign(shares, sender)
+    /// sig = sign(shares || sender)
     pub signature: Signature,
 }
 
@@ -89,6 +90,9 @@ pub enum KeyrefreshAborted {
     /// Invalid share was provided. This could be a malicious attempt to provide an invalid share.
     // TODO: blames
     InvalidShare(u16),
+    /// One or more parties provided invalid signature(s). This could be a malicious attempt to impersonate another party.
+    // TODO: blames
+    InvalidSignature,
     /// Global Verification Key has been changed where it should not.
     GlobalVerificationKeyChanged,
 }
@@ -148,7 +152,7 @@ where
         .iter()
         .position(|pk| pk == &keypair.pk())
         .ok_or(Bug::NotAParticipant)
-        .and_then(|i| u16::try_from(i).map_err(|_| Bug::ParticipantIndexOutOfBounds(i)))?;
+        .and_then(|i| u16::try_from(i).map_err(|_| Bug::InvalidNumberOfParticipants))?;
 
     tracer.stage("Setup networking");
 
@@ -167,6 +171,8 @@ where
         .collect::<Result<BTreeMap<_, _>, _>>()
         .map_err(Bug::Serialization)?;
 
+    assert!(participants_map.len() == participants.len(), "Duplicate participants");
+
     let maybe_msg = if pkg.is_non_zero() {
         tracer.stage("Generate Own shares");
         let old_secret = Some(pkg.share_keypair.sk().expose_secret());
@@ -178,14 +184,18 @@ where
         poly.coeffs.zeroize();
 
         tracer.stage("Sign shares");
+        let shares = Some(shares);
         let mut msg_to_sign = Vec::new();
+        shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
         keypair
             .pk()
             .serialize_compressed(&mut msg_to_sign)
             .map_err(Bug::Serialization)?;
-        shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
         let signature = keypair.sign(&msg_to_sign).map_err(Bug::Signing)?;
-        let msg = ReshareMsg { shares: Some(shares), sender: keypair.pk(), signature };
+        let msg = ReshareMsg { shares, sender: keypair.pk(), signature };
+        // sanity check
+        let self_check = signature.verify(&msg_to_sign, &keypair.pk());
+        assert!(self_check, "self Signature check failed");
 
         tracer.stage("Broadcast shares");
         tracer.send_msg();
@@ -199,11 +209,11 @@ where
         tracer.stage("Sign empty shares");
         let shares = None;
         let mut msg_to_sign = Vec::new();
+        shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
         keypair
             .pk()
             .serialize_compressed(&mut msg_to_sign)
             .map_err(Bug::Serialization)?;
-        shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
         let signature = keypair.sign(&msg_to_sign).map_err(Bug::Signing)?;
         let msg = ReshareMsg { shares, sender: keypair.pk(), signature };
 
@@ -222,28 +232,34 @@ where
     tracer.msgs_received();
 
     tracer.stage("Verify Shares Signatures");
-    let signatures = other_shares
-        .iter()
-        .flat_map(|msg| msg.as_ref().map(|msg| msg.signature.into_projective()))
-        .collect::<Vec<_>>();
-    let public_keys = other_shares
-        .iter()
-        .flat_map(|msg| msg.as_ref().map(|msg| msg.sender.into_projective()))
-        .collect::<Vec<_>>();
-    let messages = other_shares
-        .iter()
-        .flat_map(|msg| {
-            msg.as_ref().map(|msg| {
-                let mut msg_to_sign = Vec::new();
-                msg.sender.serialize_compressed(&mut msg_to_sign).unwrap();
-                msg.shares.serialize_compressed(&mut msg_to_sign).unwrap();
-                msg_to_sign
-            })
-        })
-        .collect::<Vec<_>>();
+
+    let mut signatures = Vec::with_capacity(other_shares.len());
+    let mut public_keys = Vec::with_capacity(other_shares.len());
+    let mut messages = Vec::with_capacity(other_shares.len());
+    for msg in other_shares.iter() {
+        let Some(msg) = msg else {
+            continue;
+        };
+        let mut msg_to_sign = Vec::new();
+        msg.shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
+        msg.sender.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
+        messages.push(msg_to_sign);
+        public_keys.push(msg.sender.into_projective());
+        signatures.push(msg.signature.into_projective());
+    }
     let is_valid = crate::sig::batch_verify(&signatures, &public_keys, &messages);
     if !is_valid {
-        // TODO: do the heavy lifting of finding the invalid signature, and then blame them.
+        let iter = signatures.into_iter().zip_eq(public_keys).zip_eq(messages);
+        let mut blames = Vec::new();
+        for ((signature, public_key), message) in iter {
+            if !crate::sig::verify(&signature, &public_key, &message) {
+                blames.push(public_key);
+            }
+        }
+        if !blames.is_empty() {
+            // TODO: support blames
+            return Err(KeyrefreshAborted::InvalidSignature.into());
+        }
     }
 
     tracer.stage("Collect shares");
@@ -274,6 +290,7 @@ where
         // The sender here must be an old participant, as the new participants are not supposed to send shares.
         let sender_addr = Address::try_from(sender).map_err(Bug::Serialization)?;
         if shares.len() != usize::from(n) {
+            eprint!("expected {} shares, got {}", n, shares.len());
             return Err(KeyrefreshAborted::FewerThanNShares(n).into());
         }
         let result = shares_map.insert(sender_addr, shares);
@@ -299,7 +316,6 @@ where
             let curr_gvk = pkg.global_verification_key();
             let new_gvk = new_pkg.global_verification_key();
             if curr_gvk != new_gvk {
-                eprintln!("[#{i}] Global verification key changed. {curr_gvk} => {new_gvk}");
                 return Err(KeyrefreshAborted::GlobalVerificationKeyChanged.into());
             }
             tracer.protocol_ends();
@@ -326,8 +342,11 @@ where
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
+    use proptest::prelude::*;
     use rand::{rngs::StdRng, seq::IteratorRandom, SeedableRng};
     use round_based::simulation::Simulation;
+    use test_strategy::proptest;
+    use test_strategy::Arbitrary;
 
     use crate::{
         addr::Address,
@@ -340,10 +359,22 @@ mod tests {
 
     use super::*;
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn it_works() {
-        let n = 5;
-        let t = n * 2 / 3;
+    #[derive(Arbitrary, Debug)]
+    struct TestInput {
+        #[strategy(2..12u16)]
+        n: u16,
+        #[strategy(1..#n)]
+        t: u16,
+        #[strategy(0..(#n - #t) as usize)]
+        remove: usize,
+        #[strategy(0..#t)]
+        add: u16,
+    }
+
+    #[proptest(async = "tokio", cases = 15, fork = true)]
+    async fn it_works(input: TestInput) {
+        let n = input.n;
+        let t = input.t;
 
         let keypairs = generate_keypairs(n);
         let participants = keypairs.iter().map(|k| k.pk()).collect::<Vec<_>>();
@@ -351,9 +382,9 @@ mod tests {
         assert_eq!(keygen_results.len(), n as usize);
         let pkg = &keygen_results.values().next().cloned().unwrap();
         let msg = b"Hello, World!";
-        let sig = run_singing(&participants, &keygen_results, msg).await;
+        let sig = run_singing(&keypairs, &keygen_results, msg).await;
         // Verify the signature.
-        assert!(sig.verify(msg, &pkg.global_verification_key()));
+        prop_assert!(sig.verify(msg, &pkg.global_verification_key()));
 
         // Do a keyshare with the same participants.
         let mut simulation = Simulation::<Msg>::with_capacity(usize::from(n));
@@ -378,92 +409,42 @@ mod tests {
             let address = keypairs[i as usize].address().unwrap();
             let pkg = keygen_results[&address].clone();
             let refresh_pkg = out.unwrap();
-            assert_eq!(refresh_pkg.global_verification_key(), pkg.global_verification_key(), "Party {i}'s GVK changed");
-            assert_eq!(refresh_pkg.n, pkg.n, "Party {i}'s n changed");
-            assert_eq!(refresh_pkg.t, pkg.t, "Party {i}'s t changed");
-            assert_eq!(refresh_pkg.i, i, "Party {i}'s i changed");
-            assert_eq!(refresh_pkg.gvk_poly.len(), pkg.gvk_poly.len(), "Party {i}'s GVK poly changed");
+            prop_assert_eq!(
+                refresh_pkg.global_verification_key(),
+                pkg.global_verification_key(),
+                "Party {}'s GVK changed",
+                i
+            );
+            prop_assert_eq!(refresh_pkg.n, pkg.n, "Party {}'s n changed", i);
+            prop_assert_eq!(refresh_pkg.t, pkg.t, "Party {}'s t changed", i);
+            prop_assert_eq!(refresh_pkg.i, i, "Party {}'s i changed", i);
+            prop_assert_eq!(refresh_pkg.gvk_poly.len(), pkg.gvk_poly.len(), "Party {}'s GVK poly changed", i);
             refresh_results.insert(address, refresh_pkg);
         }
 
         let msg = b"Hello, World!";
-        let sig = run_singing(&participants, &refresh_results, msg).await;
+        let sig = run_singing(&keypairs, &refresh_results, msg).await;
         // Verify the signature.
-        assert!(sig.verify(msg, &pkg.global_verification_key()));
+        prop_assert!(sig.verify(msg, &pkg.global_verification_key()));
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn remove_party() {
-        let n = 5;
-        let t = n * 2 / 3;
+    #[proptest(async = "tokio", cases = 15, fork = true)]
+    async fn remove_party(input: TestInput) {
+        let n = input.n;
+        let t = input.t;
 
         let keypairs = generate_keypairs(n);
         let participants = keypairs.iter().map(|k| k.pk()).collect::<Vec<_>>();
         let keygen_results = run_keygen(t, &keypairs).await;
-        assert_eq!(keygen_results.len(), n as usize);
+        prop_assert_eq!(keygen_results.len(), n as usize);
         let pkg = &keygen_results.values().next().cloned().unwrap();
 
-        // Do a keyshare but remove one party.
-        let mut rng = StdRng::seed_from_u64(0xc0de);
-        let idx_to_remove = (0..n).choose(&mut rng).unwrap();
-        let mut keypairs = keypairs.clone();
-        let mut participants = participants.clone();
-        participants.remove(idx_to_remove as usize);
-        keypairs.remove(idx_to_remove as usize);
-        eprintln!("Removed party {idx_to_remove}");
-
-        let n = participants.len() as u16;
-        eprintln!("Running Keyrefresh with {n} parties");
-        let mut simulation = Simulation::<Msg>::with_capacity(usize::from(n));
-        let mut tasks = Vec::with_capacity(usize::from(n));
-        for i in 0..n {
-            let party = simulation.add_party();
-            let keypair = keypairs[i as usize].clone();
-            let address = keypair.address().unwrap();
-            let pkg = keygen_results[&address].clone();
-            let participants = participants.clone();
-            let task = tokio::spawn(async move {
-                let mut rng = StdRng::seed_from_u64(0x000fff + u64::from(i + 1));
-                let out = run(&mut rng, None, &keypair, &pkg, &participants, t, party).await;
-                (i, out)
-            });
-            tasks.push(task);
-        }
-
-        let mut refresh_results = BTreeMap::new();
-        for task in tasks {
-            let (i, out) = task.await.unwrap();
-            let address = keypairs[i as usize].address().unwrap();
-            let pkg = keygen_results[&address].clone();
-            let refresh_pkg = out.unwrap();
-            assert_eq!(refresh_pkg.global_verification_key(), pkg.global_verification_key(), "Party {i}'s GVK changed");
-            refresh_results.insert(address, refresh_pkg);
-        }
-
-        let msg = b"Hello, World!";
-        let sig = run_singing(&participants, &refresh_results, msg).await;
-        // Verify the signature.
-        assert!(sig.verify(msg, &pkg.global_verification_key()));
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn with_just_t_parties() {
-        let n = 5;
-        let t = n * 2 / 3;
-
-        let keypairs = generate_keypairs(n);
-        let participants = keypairs.iter().map(|k| k.pk()).collect::<Vec<_>>();
-        let keygen_results = run_keygen(t, &keypairs).await;
-        assert_eq!(keygen_results.len(), n as usize);
-        let pkg = &keygen_results.values().next().cloned().unwrap();
-
-        // Do a keyshare but remove one party.
+        // Do a keyshare but remove some parties.
         let mut rng = StdRng::seed_from_u64(0xdead);
         let mut keypairs = keypairs.clone();
         let mut participants = participants.clone();
         let mut removed_parties = BTreeSet::new();
-        // keep at least t parties in the participants list
-        while removed_parties.len() < usize::from(n - t) {
+        while removed_parties.len() < input.remove {
             let n = participants.len();
             let idx_to_remove = (0..n).choose(&mut rng).unwrap();
             if !removed_parties.contains(&idx_to_remove) {
@@ -476,7 +457,8 @@ mod tests {
 
         let n = participants.len() as u16;
         let t = n * 2 / 3;
-        eprintln!("Running Keyrefresh with {t}-out-of-{n} parties");
+
+        eprintln!("Running Keyrefresh with {t} out of {n} parties");
         let mut simulation = Simulation::<Msg>::with_capacity(usize::from(n));
         let mut tasks = Vec::with_capacity(usize::from(n));
         for i in 0..n {
@@ -499,37 +481,44 @@ mod tests {
             let address = keypairs[i as usize].address().unwrap();
             let pkg = keygen_results[&address].clone();
             let refresh_pkg = out.unwrap();
-            assert_eq!(refresh_pkg.global_verification_key(), pkg.global_verification_key(), "Party {i}'s GVK changed");
+            prop_assert_eq!(
+                refresh_pkg.global_verification_key(),
+                pkg.global_verification_key(),
+                "Party {}'s GVK changed",
+                i
+            );
             refresh_results.insert(address, refresh_pkg);
         }
 
         let msg = b"Hello, World!";
-        let sig = run_singing(&participants, &refresh_results, msg).await;
+        let sig = run_singing(&keypairs, &refresh_results, msg).await;
         // Verify the signature.
-        assert!(sig.verify(msg, &pkg.global_verification_key()));
+        prop_assert!(sig.verify(msg, &pkg.global_verification_key()));
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn add_party() {
-        let n = 5;
-        let t = n * 2 / 3;
+    #[proptest(async = "tokio", cases = 15, fork = true)]
+    async fn add_party(input: TestInput) {
+        let n = input.n;
+        let t = input.t;
+
+        prop_assume!(t < n);
+        prop_assume!(input.add > 0 && input.add < t);
 
         let keypairs = generate_keypairs(n);
-        let participants = keypairs.iter().map(|k| k.pk()).collect::<Vec<_>>();
         let keygen_results = run_keygen(t, &keypairs).await;
-        assert_eq!(keygen_results.len(), n as usize);
+        prop_assert_eq!(keygen_results.len(), n as usize);
         let pkg = &keygen_results.values().next().cloned().unwrap();
         let gvk = pkg.global_verification_key().clone();
-
-        // Do a keyshare but add one party.
-        let keypair = generate_keypair(n + 1);
-        let mut keypairs = keypairs.clone();
-        let mut participants = participants.clone();
-        keypairs.push(keypair.clone());
-        participants.push(keypair.pk());
+        // Do a keyshare but add more parties.
+        let new_keypairs = (0..input.add).map(|i| generate_keypair(n + i));
+        let keypairs = keypairs.into_iter().chain(new_keypairs).collect::<Vec<_>>();
+        let participants = keypairs.iter().map(|k| k.pk()).collect::<Vec<_>>();
         let n = participants.len() as u16;
+        let t = n * 2 / 3;
 
-        eprintln!("Running Keyrefresh with {n} parties");
+        prop_assume!(t < n);
+
+        eprintln!("Running Keyrefresh with {t} out of {n} parties");
         let mut simulation = Simulation::<Msg>::with_capacity(usize::from(n));
         let mut tasks = Vec::with_capacity(usize::from(n));
         for i in 0..n {
@@ -558,9 +547,9 @@ mod tests {
         }
 
         let msg = b"Hello, World!";
-        let sig = run_singing(&participants, &refresh_results, msg).await;
+        let sig = run_singing(&keypairs, &refresh_results, msg).await;
         // Verify the signature.
-        assert!(sig.verify(msg, &pkg.global_verification_key()));
+        prop_assert!(sig.verify(msg, &pkg.global_verification_key()));
     }
 
     fn generate_keypairs(n: u16) -> Vec<Keypair> {
@@ -609,26 +598,22 @@ mod tests {
         outputs
     }
 
-    async fn run_singing(
-        participants: &[PublicKey],
-        pkgs: &BTreeMap<Address, KeysharePackage>,
-        msg: &[u8],
-    ) -> Signature {
-        let n = participants.len() as u16;
+    async fn run_singing(keypairs: &[Keypair], pkgs: &BTreeMap<Address, KeysharePackage>, msg: &[u8]) -> Signature {
+        let n = keypairs.len() as u16;
         let t = pkgs.values().next().unwrap().t;
         eprintln!("Running {t}-out-of-{n} Signing");
         let mut simulation = Simulation::<SigningMsg>::with_capacity(usize::from(n));
         let mut tasks = vec![];
         for i in 0..n {
             let party = simulation.add_party();
-            let me = participants[usize::from(i)];
-            let address = Address::try_from(me).unwrap();
+            let me = keypairs[usize::from(i)].clone();
+            let address = me.address().unwrap();
             let pkg = pkgs.get(&address).cloned().unwrap();
             assert_eq!(pkg.i, i);
             let msg_to_be_signed = msg.to_vec();
-            let all_participants = participants.to_vec().clone();
+            let all_participants = keypairs.iter().map(|k| k.pk()).collect::<Vec<_>>();
             let output = tokio::spawn(async move {
-                let output = sign(None, &pkg, &all_participants, &msg_to_be_signed, party).await;
+                let output = sign(None, &me, &pkg, &all_participants, &msg_to_be_signed, party).await;
                 (me, output)
             });
             tasks.push(output);
@@ -636,11 +621,11 @@ mod tests {
 
         let mut outputs = BTreeMap::new();
         for task in tasks {
-            let (pk, output) = task.await.unwrap();
+            let (k, output) = task.await.unwrap();
             match output {
-                Ok(sig) => outputs.insert(Address::try_from(pk).unwrap(), sig),
+                Ok(sig) => outputs.insert(k.address().unwrap(), sig),
                 Err(e) => {
-                    eprintln!("{pk} => Error: {e}");
+                    eprintln!("{} => Error: {e}", k.pk());
                     continue;
                 },
             };

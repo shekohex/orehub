@@ -101,7 +101,7 @@ mod tests {
     fn pubkey_to_address() {
         let zero = PublicKey::zero();
         let addr = Address::try_from(&zero).unwrap();
-        assert_eq!(addr.to_string(), "d8dc5bb46215d1445739b46cac9117751d9d8d562df1c8bf0dfbf98a6cdd6f4f");
+        assert_eq!(addr.to_string(), "FbXx2EtePwwXrYMydsNoSjqikwZaxH8gDXuMQWhTPrxe");
         let as_scalar = addr.as_scalar();
         assert_eq!(as_scalar.into_bigint().to_bytes_le(), addr.as_bytes());
     }

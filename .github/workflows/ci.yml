@@ -30,6 +30,11 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Install Cargo Nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
       - name: Build the Node
         run: cargo build
         timeout-minutes: 90
@@ -41,8 +46,8 @@ jobs:
         timeout-minutes: 30
 
       - name: Run the tests
-        run: SKIP_WASM_BUILD=1 cargo test
-        timeout-minutes: 15
+        run: SKIP_WASM_BUILD=1 cargo nextest run --release
+        timeout-minutes: 20
 
       - name: Build the docs
         run: SKIP_WASM_BUILD=1 cargo doc --workspace --no-deps

@@ -33,14 +33,28 @@ impl Signature {
     /// 2. e(sig, g2) where sig is the signature and g2 is the generator of G2.
     /// The verification equation is e(H(m), pk) == e(sig, g2)
     pub fn verify(&self, message: &[u8], public_key: &PublicKey) -> bool {
-        let Ok(msg_hash_g1) = crate::hash::hash_to_g1(message) else {
-            return false;
-        };
-        let g2 = G2Affine::generator();
-        let e1 = Bls12_381::pairing(&msg_hash_g1, public_key.as_ref());
-        let e2 = Bls12_381::pairing(&self.0, &g2);
-        e1 == e2
+        self::verify(self.into_projective(), public_key.into_projective(), message)
     }
+}
+
+/// Verify the signature on a message with the public key
+///
+/// We will do two pairings:
+/// 1. e(H(m), pk) where H(m) is the hash of the message and pk is the public key.
+/// 2. e(sig, g2) where sig is the signature and g2 is the generator of G2.
+/// The verification equation is e(H(m), pk) == e(sig, g2)
+pub fn verify(
+    signature: impl Into<G1Prepared<Bls12Config>>,
+    public_key: impl Into<G2Prepared<Bls12Config>>,
+    message: &[u8],
+) -> bool {
+    let Ok(msg_hash_g1) = crate::hash::hash_to_g1(message) else {
+        return false;
+    };
+    let g2 = G2Affine::generator();
+    let e1 = Bls12_381::pairing(&msg_hash_g1, public_key);
+    let e2 = Bls12_381::pairing(signature, &g2);
+    e1 == e2
 }
 
 /// Batch verify a list of signatures on a message with a list of public keys.

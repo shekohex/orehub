@@ -1,5 +1,6 @@
 use ark_serialize::{CanonicalSerialize, SerializationError};
 use ark_std::{collections::BTreeMap, rand, vec::Vec};
+use itertools::Itertools;
 use round_based::{
     rounds_router::RoundsRouter, runtime::AsyncRuntime, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt,
 };
@@ -34,7 +35,7 @@ pub struct PublicSharesMsg {
     pub sender: PublicKey,
     /// Signature of us to prove that we are the owner of the shares.
     /// This is a signature of all of the above.
-    /// sig = sign(shares, sender)
+    /// sig = sign(shares || sender)
     pub signature: Signature,
 }
 
@@ -48,11 +49,11 @@ pub struct Error(#[cfg_attr(feature = "std", source)] Reason);
 #[derive(Debug, displaydoc::Display)]
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
 pub enum Reason {
-    /// Protocol was maliciously aborted by another party
+    /// Protocol was maliciously aborted by another party: {0}
     Aborted(#[cfg_attr(feature = "std", source)] KeygenAborted),
-    /// IO error
+    /// IO error: {0}
     IoError(#[cfg_attr(feature = "std", source)] super::IoError),
-    /// Bug occurred
+    /// Bug occurred: {0}
     Bug(Bug),
 }
 
@@ -87,6 +88,9 @@ pub enum KeygenAborted {
     /// Invalid share was provided. This could be a malicious attempt to provide an invalid share.
     // TODO: blames
     InvalidShare(u16),
+    /// One or more parties provided invalid signature(s). This could be a malicious attempt to impersonate another party.
+    // TODO: blames
+    InvalidSignature,
 }
 
 #[derive(Debug, displaydoc::Display)]
@@ -170,11 +174,11 @@ where
 
     tracer.stage("Sign shares");
     let mut msg_to_sign = Vec::new();
+    shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
     keypair
         .pk()
         .serialize_compressed(&mut msg_to_sign)
         .map_err(Bug::Serialization)?;
-    shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
     let signature = keypair.sign(&msg_to_sign).map_err(Bug::Signing)?;
 
     let msg = PublicSharesMsg { shares, sender: keypair.pk(), signature };
@@ -191,28 +195,31 @@ where
     tracer.msgs_received();
 
     tracer.stage("Verify Shares Signatures");
-    let signatures = other_shares
-        .iter()
-        .flat_map(|msg| msg.as_ref().map(|msg| msg.signature.into_projective()))
-        .collect::<Vec<_>>();
-    let public_keys = other_shares
-        .iter()
-        .flat_map(|msg| msg.as_ref().map(|msg| msg.sender.into_projective()))
-        .collect::<Vec<_>>();
-    let messages = other_shares
-        .iter()
-        .flat_map(|msg| {
-            msg.as_ref().map(|msg| {
-                let mut msg_to_sign = Vec::new();
-                msg.sender.serialize_compressed(&mut msg_to_sign).unwrap();
-                msg.shares.serialize_compressed(&mut msg_to_sign).unwrap();
-                msg_to_sign
-            })
-        })
-        .collect::<Vec<_>>();
+
+    let mut signatures = Vec::with_capacity(other_shares.len());
+    let mut public_keys = Vec::with_capacity(other_shares.len());
+    let mut messages = Vec::with_capacity(other_shares.len());
+    for msg in other_shares.iter().flatten() {
+        let mut msg_to_sign = Vec::new();
+        msg.shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
+        msg.sender.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
+        messages.push(msg_to_sign);
+        public_keys.push(msg.sender.into_projective());
+        signatures.push(msg.signature.into_projective());
+    }
     let is_valid = crate::sig::batch_verify(&signatures, &public_keys, &messages);
     if !is_valid {
-        // TODO: do the heavy lifting of finding the invalid signature, and then blame them.
+        let iter = signatures.into_iter().zip_eq(public_keys).zip_eq(messages);
+        let mut blames = Vec::new();
+        for ((signature, public_key), message) in iter {
+            if !crate::sig::verify(&signature, &public_key, &message) {
+                blames.push(public_key);
+            }
+        }
+        if !blames.is_empty() {
+            // TODO: support blames
+            return Err(KeygenAborted::InvalidSignature.into());
+        }
     }
 
     tracer.stage("Collect shares");
@@ -271,14 +278,17 @@ where
 mod tests {
     use core::borrow::BorrowMut;
 
+    use proptest::prelude::*;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use round_based::simulation::Simulation;
+    use test_strategy::proptest;
+    use test_strategy::Arbitrary;
 
     use super::*;
 
     #[test]
-    fn keygen_without_round_based() {
+    fn without_round_based() {
         let n = 5;
         let t = n * 2 / 3;
         let keypairs = generate_keypairs(n);
@@ -343,10 +353,19 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor = "multi_thread")]
-    async fn keygen_works() {
-        let n = 5;
-        let t = n * 2 / 3;
+    #[derive(Arbitrary, Debug)]
+    struct TestInput {
+        #[strategy(2..12u16)]
+        n: u16,
+        #[strategy(1..#n)]
+        t: u16,
+    }
+
+    #[proptest(async = "tokio", cases = 20)]
+    async fn it_works(input: TestInput) {
+        let n = input.n;
+        let t = input.t;
+        prop_assume!(t < n);
         eprintln!("Running {t}-out-of-{n} Keygen");
         let keypairs = generate_keypairs(n);
         let mut participants = keypairs.iter().map(|k| k.pk()).collect::<Vec<_>>();
@@ -383,7 +402,7 @@ mod tests {
 
             let expected = pkg.global_verification_key();
             let actual = pkg2.global_verification_key();
-            assert_eq!(expected, actual, "Party {i} failed, expected 0x{expected} but got 0x{actual}",);
+            prop_assert_eq!(expected, actual, "Party {} failed, expected 0x{} but got 0x{}", i, expected, actual);
         }
 
         eprintln!("Group PublicKey: {}", pkg.global_verification_key());
