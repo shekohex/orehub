@@ -1,0 +1,72 @@
+[package]
+name = "npvdkgrs"
+version = "0.1.0"
+description = "Non-interactive publicly verifiable distributed key generation and resharing algorithm over BLS12-381"
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+publish.workspace = true
+rust-version = "1.80.0"
+
+[dependencies]
+ark-std.workspace = true
+ark-ff.workspace = true
+ark-ec.workspace = true
+ark-poly.workspace = true
+ark-serialize = { workspace = true, default-features = false, features = ["derive"] }
+ark-bls12-381 = { workspace = true, default-features = false, features = ["curve"] }
+
+sha3.workspace = true
+thiserror.workspace = true
+thiserror.optional = true
+displaydoc.workspace = true
+
+zeroize = { workspace = true, default-features = false, features = ["alloc"] }
+chacha20poly1305 = { workspace = true, default-features = false, features = ["alloc"] }
+bs58 = { workspace = true, default-features = false, features = ["alloc"] }
+rayon = { workspace = true, default-features = false, optional = true }
+
+round-based = { workspace = true, default-features = false, features = ["derive"] }
+serde = { workspace = true, default-features = false, features = ["derive", "alloc"] }
+
+[dev-dependencies]
+ark-std.workspace = true
+ark-std.features = ["std", "getrandom"]
+round-based.workspace = true
+round-based.features = ["derive", "dev", "state-machine"]
+tokio = { workspace = true, default-features = false, features = ["full"] }
+proptest = { workspace = true, default-features = false, features = ["std", "bit-set", "fork", "timeout"] }
+test-strategy = { workspace = true, default-features = false }
+criterion = { workspace = true, features = ["html_reports", "async_tokio"] }
+
+
+[[bench]]
+name = "keygen"
+harness = false
+
+[features]
+default = ["std"]
+std = [
+    "ark-std/std",
+    "ark-serialize/std",
+    "ark-ff/std",
+    "ark-ec/std",
+    "ark-poly/std",
+    "ark-bls12-381/std",
+    "sha3/std",
+    "chacha20poly1305/std",
+    "zeroize/std",
+    "dep:thiserror",
+    "displaydoc/std",
+    "round-based/std",
+    "round-based/runtime-tokio",
+    "serde/std",
+    "bs58/std",
+]
+parallel = ["dep:rayon", "ark-std/parallel", "ark-ff/parallel", "ark-ec/parallel", "ark-poly/parallel"]
+asm = ["ark-ff/asm", "sha3/asm"]
+print-trace = ["ark-std/print-trace"]
+getrandom = ["ark-std/getrandom", "chacha20poly1305/getrandom"]
+state-machine = ["round-based/state-machine"]

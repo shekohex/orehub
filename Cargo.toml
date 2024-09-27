@@ -7,7 +7,7 @@ edition = "2021"
 publish = false
 
 [workspace]
-members = ["client/light", "node", "pallets/template", "primitives", "runtime"]
+members = ["client/light", "node", "npvdkgrs", "pallets/template", "primitives", "runtime"]
 resolver = "2"
 
 [workspace.metadata.poladkdot-sdk]
@@ -19,6 +19,8 @@ orehub-primitives = { path = "./primitives", default-features = false }
 orehub-runtime = { path = "./runtime", default-features = false }
 pallet-orehub = { path = "./pallets/template", default-features = false }
 
+npvdkgrs = { path = "./npvdkgrs", default-features = false }
+
 serde = { version = "1.0", default-features = false }
 static_assertions = { version = "1.1.0", default-features = false }
 futures = { version = "0.3.30" }
@@ -29,6 +31,12 @@ chrono = { version = "0.4.38" }
 num-format = { version = "0.4.4" }
 docify = { version = "0.2.8" }
 smallvec = { version = "1.13.2", default-features = false }
+sha3 = { version = "0.10.8", default-features = false }
+thiserror = { version = "1", default-features = false }
+displaydoc = { version = "0.2.5", default-features = false }
+rand_chacha = { version = "0.3.0", default-features = false }
+hex = { version = "0.4.3", default-features = false }
+itertools = { version = "0.13.0", default-features = false }
 
 frame = { version = "0.6.0", default-features = false, package = "polkadot-sdk-frame" }
 frame-benchmarking = { version = "37.0.0", default-features = false }
@@ -118,3 +126,26 @@ substrate-wasm-builder = { version = "24.0.0", default-features = false }
 subxt = { version = "0.37.0", default-features = false }
 subxt-signer = { version = "0.37.0", default-features = false }
 subxt-core = { version = "0.37.0", default-features = false }
+
+# Arkworks
+ark-std = { version = "0.4.0", default-features = false }
+ark-ff = { version = "0.4.0", default-features = false }
+ark-ec = { version = "0.4.0", default-features = false }
+ark-poly = { version = "0.4.0", default-features = false }
+ark-serialize = { version = "0.4.0", default-features = false }
+ark-bls12-381 = { version = "0.4.0", default-features = false }
+
+zeroize = { version = "1.8.1", default-features = false }
+rayon = { version = "1.10", default-features = false }
+chacha20poly1305 = { version = "0.10", default-features = false }
+round-based = { version = "0.3.0", default-features = false }
+bs58 = { version = "0.5.1", default-features = false }
+
+# Runtimes
+tokio = { version = "^1", default-features = false }
+
+# Testing
+test-strategy = { version = "0.4.0", default-features = false }
+proptest = { version = "1.5.0", default-features = false }
+# Profiling
+criterion = { version = "0.5", features = ["html_reports"] }
