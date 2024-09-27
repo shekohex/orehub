@@ -1,4 +1,4 @@
-use ark_serialize::{CanonicalSerialize, SerializationError};
+use ark_serialize::SerializationError;
 use ark_std::{cfg_iter, vec::Vec};
 use round_based::{
     rounds_router::RoundsRouter, runtime::AsyncRuntime, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt,
@@ -33,10 +33,6 @@ pub struct PartialSignatureMsg {
     pub partial_sig: Signature,
     /// The sender's public key
     pub sender: PublicKey,
-    /// Signature of us to prove that we are the owner of the partial signature.
-    /// This is a signature of all of the above fields.
-    /// sig = sign(partial_sig || sender)
-    pub signature: Signature,
 }
 
 /// Signing protocol error
@@ -135,17 +131,9 @@ where
     tracer.stage("Generate Own Signature");
     let partial_sig = pkg.partial_sign(msg_to_be_signed).map_err(Bug::Signing)?;
 
-    tracer.stage("Sign Partial Signature");
-    let mut msg_to_sign = Vec::new();
-    partial_sig.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
-    keypair
-        .pk()
-        .serialize_compressed(&mut msg_to_sign)
-        .map_err(Bug::Serialization)?;
-    let signature = keypair.sign(&msg_to_sign).map_err(Bug::Signing)?;
     tracer.stage("Broadcast Partial Signature");
     tracer.send_msg();
-    let msg = PartialSignatureMsg { partial_sig, sender: keypair.pk(), signature };
+    let msg = PartialSignatureMsg { partial_sig, sender: keypair.pk() };
     outgoings
         .send(Outgoing::broadcast(Msg::PublishPartialSignature(msg.clone())))
         .await
@@ -156,35 +144,6 @@ where
     tracer.receive_msgs();
     let other_partial_signatures = rounds.complete(round1).await.map_err(IoError::receive_message)?;
     tracer.msgs_received();
-
-    tracer.stage("Verify Signed Partial Signatures");
-    let mut signatures = Vec::with_capacity(other_partial_signatures.len());
-    let mut public_keys = Vec::with_capacity(other_partial_signatures.len());
-    let mut messages = Vec::with_capacity(other_partial_signatures.len());
-    for msg in other_partial_signatures.iter().flatten() {
-        let mut msg_to_sign = Vec::new();
-        msg.partial_sig
-            .serialize_compressed(&mut msg_to_sign)
-            .map_err(Bug::Serialization)?;
-        msg.sender.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
-        messages.push(msg_to_sign);
-        public_keys.push(msg.sender.into_projective());
-        signatures.push(msg.signature.into_projective());
-    }
-    let is_valid = crate::sig::batch_verify(&signatures, &public_keys, &messages);
-    if !is_valid {
-        let iter = itertools::izip!(signatures, public_keys, messages);
-        let mut blames = Vec::new();
-        for (signature, public_key, message) in iter {
-            if !crate::sig::verify(&signature, &public_key, &message) {
-                blames.push(public_key);
-            }
-        }
-        if !blames.is_empty() {
-            // TODO: support blames
-            return Err(SigningAborted::InvalidSignedPartialSignature.into());
-        }
-    }
 
     tracer.stage("Collect Partial Signatures");
     let msgs = other_partial_signatures.into_vec_including_me(msg);

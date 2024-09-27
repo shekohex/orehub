@@ -1,6 +1,5 @@
-use ark_serialize::{CanonicalSerialize, SerializationError};
+use ark_serialize::SerializationError;
 use ark_std::{collections::BTreeMap, rand, vec::Vec};
-use itertools::Itertools;
 use round_based::{
     rounds_router::RoundsRouter, runtime::AsyncRuntime, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt,
 };
@@ -14,7 +13,6 @@ use crate::{
     params::Parameters,
     party::KeysharePackage,
     share::PublicShare,
-    sig::Signature,
     trace::Tracer,
 };
 
@@ -33,10 +31,6 @@ pub struct PublicSharesMsg {
     pub shares: Vec<PublicShare>,
     /// Sender's public key
     pub sender: PublicKey,
-    /// Signature of us to prove that we are the owner of the shares.
-    /// This is a signature of all of the above.
-    /// sig = sign(shares || sender)
-    pub signature: Signature,
 }
 
 /// Keygen protocol error
@@ -88,9 +82,6 @@ pub enum KeygenAborted {
     /// Invalid share was provided. This could be a malicious attempt to provide an invalid share.
     // TODO: blames
     InvalidShare(u16),
-    /// One or more parties provided invalid signature(s). This could be a malicious attempt to impersonate another party.
-    // TODO: blames
-    InvalidSignature,
 }
 
 #[derive(Debug, displaydoc::Display)]
@@ -172,16 +163,7 @@ where
     // Zeroize the polynomial
     private_poly.coeffs.zeroize();
 
-    tracer.stage("Sign shares");
-    let mut msg_to_sign = Vec::new();
-    shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
-    keypair
-        .pk()
-        .serialize_compressed(&mut msg_to_sign)
-        .map_err(Bug::Serialization)?;
-    let signature = keypair.sign(&msg_to_sign).map_err(Bug::Signing)?;
-
-    let msg = PublicSharesMsg { shares, sender: keypair.pk(), signature };
+    let msg = PublicSharesMsg { shares, sender: keypair.pk() };
     tracer.stage("Broadcast shares");
     tracer.send_msg();
     outgoings
@@ -194,40 +176,13 @@ where
     let other_shares = rounds.complete(round1).await.map_err(IoError::receive_message)?;
     tracer.msgs_received();
 
-    tracer.stage("Verify Shares Signatures");
-
-    let mut signatures = Vec::with_capacity(other_shares.len());
-    let mut public_keys = Vec::with_capacity(other_shares.len());
-    let mut messages = Vec::with_capacity(other_shares.len());
-    for msg in other_shares.iter().flatten() {
-        let mut msg_to_sign = Vec::new();
-        msg.shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
-        msg.sender.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
-        messages.push(msg_to_sign);
-        public_keys.push(msg.sender.into_projective());
-        signatures.push(msg.signature.into_projective());
-    }
-    let is_valid = crate::sig::batch_verify(&signatures, &public_keys, &messages);
-    if !is_valid {
-        let iter = signatures.into_iter().zip_eq(public_keys).zip_eq(messages);
-        let mut blames = Vec::new();
-        for ((signature, public_key), message) in iter {
-            if !crate::sig::verify(&signature, &public_key, &message) {
-                blames.push(public_key);
-            }
-        }
-        if !blames.is_empty() {
-            // TODO: support blames
-            return Err(KeygenAborted::InvalidSignature.into());
-        }
-    }
-
     tracer.stage("Collect shares");
     let msgs = other_shares.into_vec_including_me(msg);
 
     let mut shares_map = SharesMap::new(participants.len());
     for (j, msg) in msgs.into_iter().enumerate() {
         let Some(PublicSharesMsg { shares, sender, .. }) = msg else {
+            // TODO: blame missing shares
             continue;
         };
         let sender_addr = Address::try_from(sender).map_err(Bug::Serialization)?;
@@ -281,7 +236,7 @@ mod tests {
     use proptest::prelude::*;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use round_based::simulation::Simulation;
+    use round_based::{simulation::Simulation, Incoming, MessageDestination, MessageType};
     use test_strategy::proptest;
     use test_strategy::Arbitrary;
 
@@ -353,6 +308,87 @@ mod tests {
         }
     }
 
+    #[test]
+    fn state_machine() {
+        use round_based::state_machine::*;
+        let n = 2;
+        let t = 1;
+        let keypairs = generate_keypairs(n);
+        let mut participants = keypairs.iter().map(|k| k.pk()).collect::<Vec<_>>();
+        participants.sort_unstable();
+
+        let mut party0 = wrap_protocol(|party| async {
+            let mut rng = StdRng::seed_from_u64(0xdec0de + 1);
+            run(&mut rng, None, &keypairs[0], &participants, t, party).await
+        });
+
+        let mut party1 = wrap_protocol(|party| async {
+            let mut rng = StdRng::seed_from_u64(0xdec0de + 2);
+            run(&mut rng, None, &keypairs[1], &participants, t, party).await
+        });
+
+        let ProceedResult::Yielded = party0.proceed() else {
+            panic!("Expected Yielded");
+        };
+
+        let ProceedResult::Yielded = party1.proceed() else {
+            panic!("Expected Yielded");
+        };
+
+        let ProceedResult::SendMsg(Outgoing {
+            msg: Msg::PublishShares(party0_shares),
+            recipient: MessageDestination::AllParties,
+        }) = party0.proceed()
+        else {
+            panic!("Expected PublishShares");
+        };
+
+        // we now expects to receive the shares
+        let ProceedResult::NeedsOneMoreMessage = party0.proceed() else {
+            panic!("Expected NeedsOneMoreMessage");
+        };
+
+        let ProceedResult::SendMsg(Outgoing {
+            msg: Msg::PublishShares(party1_shares),
+            recipient: MessageDestination::AllParties,
+        }) = party1.proceed()
+        else {
+            panic!("Expected PublishShares");
+        };
+
+        // we now expects to receive the shares
+        let ProceedResult::NeedsOneMoreMessage = party1.proceed() else {
+            panic!("Expected NeedsOneMoreMessage");
+        };
+        // Deliver the shares
+        party0
+            .received_msg(Incoming {
+                id: 0,
+                sender: 1,
+                msg_type: MessageType::Broadcast,
+                msg: Msg::PublishShares(party1_shares),
+            })
+            .unwrap();
+        party1
+            .received_msg(Incoming {
+                id: 0,
+                sender: 0,
+                msg_type: MessageType::Broadcast,
+                msg: Msg::PublishShares(party0_shares),
+            })
+            .unwrap();
+
+        // each party should now have all shares and complete the protocol
+        let ProceedResult::Output(Ok(party0_pkg)) = party0.proceed() else {
+            panic!("Expected Output");
+        };
+        let ProceedResult::Output(Ok(party1_pkg)) = party1.proceed() else {
+            panic!("Expected Output");
+        };
+
+        assert_eq!(party0_pkg.global_verification_key(), party1_pkg.global_verification_key());
+    }
+
     #[derive(Arbitrary, Debug)]
     struct TestInput {
         #[strategy(2..12u16)]
@@ -361,7 +397,7 @@ mod tests {
         t: u16,
     }
 
-    #[proptest(async = "tokio", cases = 20)]
+    #[proptest(async = "tokio", cases = 20, fork = true)]
     async fn it_works(input: TestInput) {
         let n = input.n;
         let t = input.t;

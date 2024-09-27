@@ -1,6 +1,5 @@
-use ark_serialize::{CanonicalSerialize, SerializationError};
+use ark_serialize::SerializationError;
 use ark_std::{collections::BTreeMap, rand, vec::Vec};
-use itertools::Itertools;
 use round_based::{
     rounds_router::RoundsRouter, runtime::AsyncRuntime, Delivery, Mpc, MpcParty, Outgoing, ProtocolMessage, SinkExt,
 };
@@ -14,7 +13,6 @@ use crate::{
     params::Parameters,
     party::KeysharePackage,
     share::PublicShare,
-    sig::Signature,
     trace::Tracer,
 };
 
@@ -35,10 +33,6 @@ pub struct ReshareMsg {
     pub shares: Option<Vec<PublicShare>>,
     /// Sender's public key
     pub sender: PublicKey,
-    /// Signature of us to prove that we are the owner of the shares.
-    /// This is a signature of all of the above.
-    /// sig = sign(shares || sender)
-    pub signature: Signature,
 }
 
 /// Keyrefresh protocol error
@@ -90,9 +84,6 @@ pub enum KeyrefreshAborted {
     /// Invalid share was provided. This could be a malicious attempt to provide an invalid share.
     // TODO: blames
     InvalidShare(u16),
-    /// One or more parties provided invalid signature(s). This could be a malicious attempt to impersonate another party.
-    // TODO: blames
-    InvalidSignature,
     /// Global Verification Key has been changed where it should not.
     GlobalVerificationKeyChanged,
 }
@@ -183,19 +174,8 @@ where
         // Zeroize the polynomial
         poly.coeffs.zeroize();
 
-        tracer.stage("Sign shares");
         let shares = Some(shares);
-        let mut msg_to_sign = Vec::new();
-        shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
-        keypair
-            .pk()
-            .serialize_compressed(&mut msg_to_sign)
-            .map_err(Bug::Serialization)?;
-        let signature = keypair.sign(&msg_to_sign).map_err(Bug::Signing)?;
-        let msg = ReshareMsg { shares, sender: keypair.pk(), signature };
-        // sanity check
-        let self_check = signature.verify(&msg_to_sign, &keypair.pk());
-        assert!(self_check, "self Signature check failed");
+        let msg = ReshareMsg { shares, sender: keypair.pk() };
 
         tracer.stage("Broadcast shares");
         tracer.send_msg();
@@ -208,14 +188,7 @@ where
     } else {
         tracer.stage("Sign empty shares");
         let shares = None;
-        let mut msg_to_sign = Vec::new();
-        shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
-        keypair
-            .pk()
-            .serialize_compressed(&mut msg_to_sign)
-            .map_err(Bug::Serialization)?;
-        let signature = keypair.sign(&msg_to_sign).map_err(Bug::Signing)?;
-        let msg = ReshareMsg { shares, sender: keypair.pk(), signature };
+        let msg = ReshareMsg { shares, sender: keypair.pk() };
 
         tracer.stage("Broadcast empty shares");
         tracer.send_msg();
@@ -230,37 +203,6 @@ where
     tracer.receive_msgs();
     let other_shares = rounds.complete(round1).await.map_err(IoError::receive_message)?;
     tracer.msgs_received();
-
-    tracer.stage("Verify Shares Signatures");
-
-    let mut signatures = Vec::with_capacity(other_shares.len());
-    let mut public_keys = Vec::with_capacity(other_shares.len());
-    let mut messages = Vec::with_capacity(other_shares.len());
-    for msg in other_shares.iter() {
-        let Some(msg) = msg else {
-            continue;
-        };
-        let mut msg_to_sign = Vec::new();
-        msg.shares.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
-        msg.sender.serialize_compressed(&mut msg_to_sign).map_err(Bug::Serialization)?;
-        messages.push(msg_to_sign);
-        public_keys.push(msg.sender.into_projective());
-        signatures.push(msg.signature.into_projective());
-    }
-    let is_valid = crate::sig::batch_verify(&signatures, &public_keys, &messages);
-    if !is_valid {
-        let iter = signatures.into_iter().zip_eq(public_keys).zip_eq(messages);
-        let mut blames = Vec::new();
-        for ((signature, public_key), message) in iter {
-            if !crate::sig::verify(&signature, &public_key, &message) {
-                blames.push(public_key);
-            }
-        }
-        if !blames.is_empty() {
-            // TODO: support blames
-            return Err(KeyrefreshAborted::InvalidSignature.into());
-        }
-    }
 
     tracer.stage("Collect shares");
     let msgs = if let Some(my_msg) = maybe_msg {
