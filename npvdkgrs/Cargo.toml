@@ -8,6 +8,7 @@ homepage.workspace = true
 repository.workspace = true
 edition.workspace = true
 publish.workspace = true
+rust-version = "1.80.0"
 
 [dependencies]
 ark-std.workspace = true
@@ -38,6 +39,12 @@ round-based.features = ["derive", "dev", "state-machine"]
 tokio = { workspace = true, default-features = false, features = ["full"] }
 proptest = { workspace = true, default-features = false, features = ["std", "bit-set", "fork", "timeout"] }
 test-strategy = { workspace = true, default-features = false }
+criterion = { workspace = true, features = ["html_reports", "async_tokio"] }
+
+
+[[bench]]
+name = "keygen"
+harness = false
 
 [features]
 default = ["std"]

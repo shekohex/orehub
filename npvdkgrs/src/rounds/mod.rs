@@ -29,13 +29,13 @@ pub type BoxedError = Box<dyn StdError + Send + Sync>;
 #[derive(Debug, displaydoc::Display)]
 #[cfg_attr(feature = "std", derive(thiserror::Error))]
 pub enum IoError {
-    /// send message
+    /// send message: {0}
     SendMessage(#[cfg_attr(feature = "std", source)] BoxedError),
-    /// receive message
+    /// receive message: {0}
     ReceiveMessage(#[cfg_attr(feature = "std", source)] BoxedError),
     /// got eof while recieving messages
     ReceiveMessageEof,
-    /// route received message (possibly malicious behavior)
+    /// route received message (possibly malicious behavior): {0}
     RouteReceivedError(
         #[cfg_attr(feature = "std", source)] router_error::CompleteRoundError<store::RoundInputError, Infallible>,
     ),
